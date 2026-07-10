@@ -1,0 +1,238 @@
+# Contributing to SparkDistill
+
+SparkDistill is the model-quality arm of **SN74 on Gittensor**, the same subnet that funds
+[`sparkinfer`](https://github.com/gittensor-ai-lab/sparkinfer). Contributions are rewarded
+for **real, verified distillation quality improvements** — not benchmark gaming. This guide
+is how to make a contribution that counts.
+
+## Built through Gittensor
+
+Gittensor helps power SPARKDISTILL through SN74: the project receives subnet emissions,
+contributors submit source PRs, the evaluator retrains or re-scores those PRs against a
+frozen reference, and rewards are assigned from verified marginal quality improvements
+that keep the checkpoint honest. You do not need to be in Discord or understand the
+subnet internals to contribute, but the source of the incentive loop is clear: SPARKDISTILL
+is built through **SN74 on Gittensor**.
+
+## Principles
+
+- **The submission is the recipe + dataset, never the weights.** The evaluator retrains
+  from your recipe and dataset from source on its own hardware — that retrain is the
+  source of truth. A shipped checkpoint (via the proof-of-training fast path) is a
+  verification convenience for the eval *numbers* only; it is never merged or trusted
+  directly, and it never substitutes for including the recipe and dataset in your PR.
+- **Quality first, not just loss.** A recipe change that lowers training loss but degrades
+  held-out benchmark quality is worth zero. Every change is gated against a frozen eval
+  basket (see *Quality gate* below).
+- **Reasoning, not just answers.** SparkDistill's goal is reasoning distillation: a
+  trajectory or recipe change should be judged on whether it makes the student better at
+  *reasoning through* a problem, not just at matching a final answer — that's why the
+  benchmark basket includes hard-reasoning tasks (AIME, GPQA-Diamond) alongside the
+  broader basket.
+- **General, not overfit.** Improvements must hold across the benchmark basket — BFCL,
+  GSM8K, HumanEval, IFEval, MMLU-Pro, AIME, GPQA-Diamond — not just one task. A win on
+  one benchmark but a loss elsewhere is overfitting.
+- **Phase-scoped.** Phase 1 targets Qwen3.5-4B. Recipes and eval changes should target the
+  current phase's student model unless a PR is explicitly opening the next phase.
+- **Fair by construction, not by policy.** Because every merged PR's recipe and dataset
+  are public, the current frontier ("the king") can always be forked and improved on by
+  anyone — a miner can't permanently dominate by hoarding a secret checkpoint. "Copy the
+  frontier and add one optimization" is a normal, expected way to compete, not a violation
+  — see *How rewards work* below for why it still only pays for your marginal delta.
+
+## Before you open a PR
+
+```bash
+# 1. install + sanity checks
+uv sync
+ruff check .
+pyright
+
+# 2. trajectory / recipe change — does it actually train?
+scripts/train.sh recipes/<your-recipe>/sft.yaml --dry-run
+
+# 3. quality — did the resulting checkpoint get better?
+scripts/eval.sh --checkpoint outputs/<your-checkpoint> --compare-frontier
+```
+
+**Quality gate.** Run `scripts/eval.sh` on the checkpoint *before* and *after* your change.
+A correct improvement must:
+
+- improve at least one benchmark in the basket by the current eval threshold, and
+- not regress any other guarded benchmark below its floor.
+
+Do not trade breadth for a single benchmark's score. Quality is measured across the whole
+basket.
+
+## Sharing your dataset (required on every PR)
+
+Whatever dataset you trained on must be included with your PR — either committed if it's
+small, or published externally and linked in the PR description if not. This is what
+makes "the submission is the recipe + dataset" (see *Principles*) actually true in
+practice, and it's what lets another miner fork your work and improve on it.
+
+> **Known gap:** `data/processed/` (generated trajectories / formatted SFT datasets) is
+> git-ignored because these files are large — there's no dataset-hosting or aggregation
+> tooling in this repo yet (see *Open research* below). For now, publish the dataset you
+> trained on externally (e.g. a Hugging Face `datasets` repo — the same pattern
+> `proof/publish.py` uses for checkpoints) and link it in your PR. A PR whose recipe can't
+> actually be reproduced because the dataset was never shared should be treated as
+> incomplete, even if local eval numbers look good.
+
+## Proof of training (optional fast path for eval verification)
+
+This fast path is a shortcut for verifying your **eval claim** — it has nothing to do with
+sharing your dataset above, which is always required. If your checkpoint beats the
+frontier, you can skip full retrain-verification by proving your claimed numbers instead
+of just asserting them:
+
+```bash
+# 4. (optional) attest the GPU you trained/evaluated on
+uv sync --extra proof
+python -m eval.attestation --out runs/<run-id>/attestation.json
+
+# 5. package + publish a proof bundle (checkpoint + eval scores only)
+python -m proof.bundle --checkpoint outputs/<your-checkpoint> --scores eval/results/candidate.json \
+    --run-id <run-id> --out proof/_bundles/<run-id>
+python -m proof.publish --bundle proof/_bundles/<run-id> --repo-id <your-hf-username>/sparkdistill-<run-id>
+```
+
+Put the resulting Hugging Face URL in your PR description. The evaluator then runs
+`eval.verify` — a small held-out re-run of your claimed scores, plus attestation
+validation if you included it — instead of retraining from scratch. **The checkpoint
+bundle itself is never merged or trusted as the deliverable** — it only lets verification
+skip a full retrain; the recipe + dataset in your PR remain the actual submission and the
+thing the evaluator can always fall back to reproducing from source. A PR without a proof
+bundle still gets the full from-source retrain-verification; proof of training only makes
+verification cheaper, it never replaces the quality gate above or the dataset-sharing
+requirement above.
+
+`nv-attestation-sdk` (the attestation library `eval.attestation` wraps) is the current
+NVIDIA Python SDK for GPU confidential-computing attestation but is marked EOL
+2026-09-15; see the module docstring for the migration note. Miners without CC-capable
+hardware (e.g. a Blackwell RTX PRO 6000 Server Edition node) can skip attestation
+entirely and still use the HF bundle + cheap re-run path — attestation only affects how
+much trust the ledger records for that run, not whether the fast path is available.
+
+## How rewards work (SN74 on Gittensor)
+
+**Quality-only.** You're paid for the **verified marginal quality improvement** your PR
+adds over the current best ("frontier") checkpoint, not your rank — so "copy the leader +
+ε" pays ≈ ε. Both the current frontier checkpoint and your PR's resulting checkpoint are
+evaluated on the same held-out benchmark basket in one run and scored on the delta between
+them, so eval-run variance can't inflate or hide your result.
+
+**Non-quality PRs are welcome — but score 0.** Bug fixes, refactors, tests, benchmarks,
+docs, and tooling are appreciated and we'll review and merge good ones, but SN74 emits only
+for verified quality improvements, so they earn no reward. (The eval/scoring harness is
+maintainer-owned — see *Maintainer-owned paths* below.)
+
+The eval loop labels each PR **XL / L / M / S / XS** from the measured delta (or
+**BASELINE** for the first verified checkpoint on a new student/phase) — never by hand —
+and that tier is the payout. A quality improvement is scored the same wherever it lands
+(`teacher/`, `recipes/`, `eval/`); there is **no per-subsystem budget**.
+
+## Maintainer-owned paths
+
+The eval/scoring harness itself (`eval/harness.py`, `eval/score.py`, `eval/verify.py`,
+`eval/attestation.py`, `eval/ledger.py`, and the frozen benchmark data they read) is
+maintainer-owned. PRs that touch the harness in ways that change scoring or
+verification behavior are held for manual review — this protects the eval loop from
+being tuned to inflate scores rather than to improve real quality. In particular, only
+the eval bot appends to `runs/ledger.jsonl` — it is not an append-anything log.
+
+## Open research: dataset aggregation
+
+Sharing a single miner's dataset via an external link (see *Sharing your dataset* above)
+works, but there's no way yet to aggregate and validate a **qualified dataset** across many
+miners' trajectory contributions into something the project can build on collectively.
+This is an open problem, not a shipped feature.
+
+### SparkProof: Blackwell-verified Triton datasets
+
+**Implementation:** [sparkproof](https://github.com/gittensor-ai-lab/sparkproof) (sibling repo).
+
+**Production Triton datasets (`sparkproof-2`) must be validated on NVIDIA Blackwell**
+(RTX PRO 6000 Server Edition CC, `SPARKPROOF_BLACKWELL_PROFILE=workstation`). SparkProof:
+
+- Calls teachers via **OpenRouter** (Fable 5 + GPT 5.6)
+- **Compiles and executes** Triton 3.7.1 kernels on Blackwell; publishes verified-only trajectories
+- Seals manifest + Merkle root + **GPU CC attestation** (`gpu_attestation.json`)
+
+Run SparkProof **on the Blackwell CC VM** (SSH) — no Polaris. Teacher calls use OpenRouter
+with **`reasoning.effort: xhigh`** on `anthropic/claude-fable-5` and `openai/gpt-5.6-sol`.
+
+The key insight: SparkProof does not try to prove that Claude or GPT *itself* executed
+honestly — commercial APIs don't expose signed inference attestations, so that's not
+achievable today. Instead it proves that the **miner's dataset-generation and Blackwell
+validation process** was honest, reproducible, and tamper-proof. That's a much narrower,
+achievable claim, and notably for the Triton track it requires **GPU confidential computing
+on Blackwell** for compile/execute validation.
+
+**What `sparkproof-2` cryptographically proves:** teacher outputs were captured via the
+approved OpenRouter gateway; each kept sample passed Triton validation **on the attested
+Blackwell GPU**; the verified dataset manifest and Merkle root were not modified afterward;
+GPU CC attestation binds the validation run to confidential-computing hardware.
+
+**What it explicitly does not prove (and says so):** that Anthropic/OpenAI/OpenRouter
+internally executed the model honestly, or that OpenRouter routed to the correct provider.
+Those remain ordinary API-trust assumptions — the same ones every developer already makes
+when calling these APIs today. SparkProof only records the provider/model identifiers the
+API returned; it can't independently verify what happened on the other side of the HTTPS
+call.
+
+**Pipeline sketch:** run on **Blackwell CC VM** → OpenRouter calls with pinned xhigh slugs →
+hash each request/response → Triton compile+execute on GPU → filter verified samples →
+GPU CC attestation → Merkle root + `sparkproof-2` manifest → publish bundle to Hugging Face.
+Validators replay `request_sha256`, check Blackwell validation proofs, and verify GPU attestation.
+
+**Security properties this buys:** a miner can't forge or edit a dataset after generation
+(hashes/Merkle root change), can't skip Blackwell validation (verified samples only in Merkle),
+and can't substitute cheaper models (request body hash binds xhigh + slug).
+
+**Feasibility:** GPU CC attestation uses `nv-attestation-sdk` (see SparkDistill `eval/attestation.py`
+and SparkProof `gpu_attestation.json`). No Polaris / CPU TDX required when using the CC VM.
+
+**Future directions once this exists:** bind provider-signed responses into each record if
+Anthropic/OpenAI start signing API responses; bind confidential-inference attestations into
+the manifest if providers start exposing them; publish manifests to an append-only
+transparency log; optional zero-knowledge proofs of dataset properties (e.g. licensing,
+policy compliance) without revealing prompts/responses.
+
+If you have a proposal here, open an issue or draft PR against this section rather than
+against the eval harness directly — this needs discussion before it needs code.
+
+Separately from SparkProof's trust mechanics, where validated datasets actually get
+*hosted* (this repo, a dedicated aggregation repo, or purely external HF dataset repos
+referenced by manifest) is still an open, independent question — SparkProof proves a
+dataset's integrity regardless of where it ends up living.
+
+## What Does Not Score
+
+- Documentation-only changes.
+- Refactors with no benchmark improvement.
+- Test-only changes.
+- Eval harness changes that do not improve measured checkpoint quality.
+- Copying an already-merged trajectory set or recipe without a new measurable improvement.
+- Changes that improve one synthetic eval path but are unused by the scoring target.
+
+## Current Target
+
+Phase 1: **Qwen3.5-4B**, distilled from the teacher basket (Claude Fable 5, GPT 5.6)
+in [`teacher/providers.py`](teacher/providers.py), trained via
+[`recipes/qwen3.5-4b-phase1/sft.yaml`](recipes/qwen3.5-4b-phase1/sft.yaml).
+
+The project is especially interested in:
+
+- Higher-quality / more diverse teacher trajectories.
+- Data mix and hyperparameter improvements in the Phase 1 recipe.
+- Eval basket coverage that catches regressions the current benchmarks miss.
+
+## Do Not Game The Eval
+
+The evaluator uses held-out prompts, frozen benchmark data, and reproducible training
+seeds. Attempts to tune for the harness instead of real checkpoint quality can be rejected
+or ignored.
+
+The best way to earn is to make the shipped student checkpoint genuinely better and keep
+it honest.

@@ -1,0 +1,63 @@
+[project]
+name = "sparkdistill"
+version = "0.1.0"
+description = "Teacher-trajectory distillation and training recipes for SparkInfer student models"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.12"
+dependencies = [
+    "anthropic==0.69.0",
+    "openai==1.109.1",
+    "transformers>=5.2.0,<5.13",
+    "datasets==3.6.0",
+    "pyyaml==6.0.3",
+    "click==8.3.2",
+    "rich==14.3.3",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pre-commit==4.6.0",
+    "pyright==1.1.408",
+    "pytest==9.0.3",
+    "ruff==0.15.12",
+]
+# Proof-of-training: GPU confidential-computing attestation + Hugging Face
+# proof-bundle publishing. Needs a real NVIDIA CC-capable GPU/driver stack to
+# actually attest (e.g. a Blackwell RTX PRO 6000 Server Edition CC node) —
+# not required for the rest of the repo, so kept as an extra like Axolotl.
+proof = [
+    "nv-attestation-sdk==2.7.3",
+    "huggingface_hub>=1.5.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.uv]
+# nv-attestation-sdk's published metadata leaks its own dev/test pins (pytest==8.1.1,
+# build, twine, pylint) into requires_dist — override so they don't collide with our
+# actual dev-tool versions.
+override-dependencies = ["pytest==9.0.3"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["teacher", "eval", "proof"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]
+ignore = ["E501"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.pyright]
+include = ["teacher", "eval", "proof"]
+pythonVersion = "3.12"
