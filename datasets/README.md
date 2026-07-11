@@ -22,22 +22,30 @@ exact gated rows.
 
 ## What the validator does
 
-The validator runs `eval.dataset_verify` against the PR's HF link:
+Registry PRs are gated automatically by `.github/workflows/dataset_registry.yml`.
+On pass, the workflow merges the PR; on failure it leaves the PR open with a reject
+report in `eval/results/registry_gate_report.json`.
+
+The gate runs `eval.registry_gate`, which for each appended registry line:
+
+1. Validates JSON schema and rejects duplicate `hf_url` / `trajectories_sha256`.
+2. Downloads `proof/` from Hugging Face.
+3. Runs `eval.dataset_verify` with a pinned SparkProof checkout.
+
+`dataset_verify` checks, in order: required proof artifacts (including
+`trajectories_raw.jsonl`, `validation_report.jsonl`, `novelty_report.json`);
+GPU CC attestation passed with a content-bound nonce; release gate passed and rows
+still match the gated sha256; and full production `sparkproof-verify` (pinned
+generator, Fable 5 / GPT 5.6 Sol at `xhigh`, raw→verified consistency, merkle,
+attestation nonce). Any failure is `dataset:REJECT` and the PR is not merged.
+
+Manual re-check:
 
 ```bash
 python -m eval.dataset_verify --hf-repo <user>/<repo> \
     --claimed-sha256 <trajectories_sha256 from the PR> \
     --sparkproof-root ../SparkProof --out eval/results/dataset_report.json
 ```
-
-This checks, in order: the proof artifacts exist; the GPU CC attestation passed; the
-SparkProof release gate passed (decontamination + provenance) and the rows still match
-the gated sha256; and — with `--sparkproof-root` — full `sparkproof-verify` policy
-(pinned Fable 5 / GPT 5.6 Sol teachers at `xhigh`, unmodified request hashes, merkle
-root, Blackwell GPU profile). Any failure is `dataset:REJECT` and the PR is closed.
-
-On pass, the PR is merged with a size label from verified row count, and SN74
-gittensor rewards the label:
 
 | label | verified rows |
 |---|---|
