@@ -17,7 +17,7 @@ echo ">>> syncing SparkDistill base deps"
 uv sync --extra dev
 
 echo ">>> installing Axolotl + torchvision"
-uv pip install -q axolotl torchvision
+uv pip install -q axolotl torchvision numba "numpy<2.5"
 
 if [ "${SPARKDISTILL_SKIP_FLASH_ATTN:-0}" = "1" ]; then
   echo "  flash-attn: skipped (SPARKDISTILL_SKIP_FLASH_ATTN=1; training will use SDPA)"
