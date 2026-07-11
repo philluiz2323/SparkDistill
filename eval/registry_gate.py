@@ -185,6 +185,23 @@ def update_pr_dataset_label(pr_number: int, label: str) -> list[str]:
     return issues
 
 
+def close_dataset_pr(pr_number: int, issues: list[str] | None = None) -> list[str]:
+    """Close a rejected dataset-track PR after labeling it dataset:REJECT."""
+    summary = "Closed automatically: dataset registry gate rejected this submission."
+    if issues:
+        bullets = "\n".join(f"- {issue}" for issue in issues[:8])
+        summary = f"{summary}\n\n{bullets}"
+    result = subprocess.run(
+        ["gh", "pr", "close", str(pr_number), "--comment", summary],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        return [f"could not close PR #{pr_number}: {(result.stderr or result.stdout).strip()}"]
+    return []
+
+
 def hf_repo_from_url(url: str) -> str:
     match = _HF_REPO_RE.match(url.strip())
     if not match:
@@ -380,6 +397,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="merge the current GitHub PR when verification passes (CI only)",
     )
+    parser.add_argument(
+        "--close-on-reject",
+        action="store_true",
+        help="close the GitHub PR when the gate label is dataset:REJECT (CI only)",
+    )
     parser.add_argument("--pr-number", type=int, default=None)
     args = parser.parse_args(argv)
 
@@ -425,6 +447,18 @@ def main(argv: list[str] | None = None) -> int:
             for issue in label_issues:
                 print(f"  - {issue}", file=sys.stderr)
             return 1
+
+    if (
+        args.close_on_reject
+        and report.get("label") == "dataset:REJECT"
+        and args.pr_number is not None
+    ):
+        close_issues = close_dataset_pr(args.pr_number, list(report.get("issues") or []))
+        if close_issues:
+            for issue in close_issues:
+                print(f"  - {issue}", file=sys.stderr)
+            return 1
+        print(f"closed PR #{args.pr_number}", file=sys.stderr)
 
     if args.merge_on_pass and report.get("merge_eligible") and args.pr_number is not None:
         merge = subprocess.run(

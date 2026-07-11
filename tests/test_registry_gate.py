@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import eval.registry_gate as registry_gate
 from eval.registry_gate import (
     check_registry_duplicates,
+    close_dataset_pr,
     gate_registry_pr,
     is_dataset_track_pr,
     merge_eligible,
@@ -198,3 +199,16 @@ def test_update_pr_dataset_label_replaces_stale_label(monkeypatch):
         "-f",
         "labels[]=dataset:s",
     ] in calls
+
+
+def test_close_dataset_pr_posts_gate_comment(monkeypatch):
+    calls: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(registry_gate.subprocess, "run", fake_run)
+    assert close_dataset_pr(7, ["forged sha256"]) == []
+    assert calls[0][:4] == ["gh", "pr", "close", "7"]
+    assert "forged sha256" in calls[0][-1]

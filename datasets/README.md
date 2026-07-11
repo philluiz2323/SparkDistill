@@ -26,7 +26,8 @@ exact gated rows.
 Registry PRs are gated automatically by `.github/workflows/dataset_registry.yml`.
 The workflow reads the dataset-track checkbox, rejects changes outside
 `datasets/registry.jsonl`, verifies the proof, replaces any stale `dataset:*` label with
-the computed result, and merges only submissions that reach `dataset:s` or above. Failed
+the computed result, and merges only submissions that reach `dataset:s` or above.
+Rejected PRs are labeled `dataset:REJECT` and closed automatically. Failed
 or sub-threshold PRs remain open.
 
 The gate runs `eval.registry_gate`, which for each appended registry line:

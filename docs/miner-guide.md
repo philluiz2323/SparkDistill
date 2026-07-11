@@ -66,7 +66,8 @@ no miner evaluation-dataset track, registry schema, reward label, or merge path.
 can technically upload any files to a personal Hugging Face repository, but publishing a
 repository does not make it an accepted SparkDistill dataset. A registry submission
 containing eval material is expected to fail the release gate or production verification,
-receive `dataset:REJECT`, and remain unmerged.
+receive `dataset:REJECT`, and are closed automatically by CI. Sub-threshold valid
+proofs (`dataset:none`) stay open for miners to grow and resubmit.
 
 This distinction is important because the word `eval` is used in two different ways:
 

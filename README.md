@@ -140,6 +140,64 @@ verification, same as before this feature existed. See
 [`docs/miner-guide.md`](docs/miner-guide.md) for the exact commands and
 [`runs/README.md`](runs/README.md) for the ledger format.
 
+## Verifying dataset proofs (no CC VM required)
+
+The **dataset track** rewards verified SparkProof training data merged via
+[`datasets/registry.jsonl`](datasets/registry.jsonl). Miners **prove** datasets on a
+Blackwell CC VM with [SparkProof](https://github.com/gittensor-model-hub/SparkProof);
+validators **verify** from the Hugging Face `proof/` directory on any CPU host — GitHub
+Actions, a laptop, no NVIDIA GPU.
+
+```bash
+# Validator / local re-check (downloads proof/ from HF)
+python -m eval.dataset_verify \
+  --hf-repo <user>/<repo> \
+  --claimed-sha256 <trajectories_sha256 from the PR> \
+  --sparkproof-root ../SparkProof \
+  --out eval/results/dataset_report.json
+
+# Under the hood this re-runs production sparkproof-verify (offline by default)
+uv run sparkproof-verify --bundle /path/to/proof
+uv run sparkproof-verify --bundle /path/to/proof --online   # + NVIDIA NRAS JWKS signature
+```
+
+Registry PRs are gated automatically by
+[`.github/workflows/dataset_registry.yml`](.github/workflows/dataset_registry.yml) — see
+[`datasets/README.md`](datasets/README.md) for the miner flow and label thresholds
+(`dataset:s/m/l` merge, `dataset:none` below threshold, `dataset:REJECT` closed).
+
+### What offline verification enforces
+
+For each trajectory row, production verification checks the **stored bundle** — not live
+hardware or live teacher API calls:
+
+| Check | What it proves |
+|---|---|
+| `provider` + `model` | Only `claude-fable-5` (Anthropic) and `gpt-5.6` / `gpt-5.6-sol` (OpenAI) |
+| `gateway` + `gateway_model` | Call went through **OpenRouter** or **yunwu** with pinned slugs |
+| `request_sha256` | The committed request body matches the pinned call: model slug + `reasoning.effort=xhigh` + prompt/settings |
+| `metadata.gateway_response_model` (yunwu) | Response model slug is also pinned |
+| raw → verified consistency | Miner cannot swap `trajectories.jsonl` after GPU attestation / release gate |
+| `gpu_attestation` nonce | Attestation is bound to `trajectories_raw.jsonl`, not a different dataset |
+| release gate + PR hash | `trajectories_sha256` in the PR still matches the gated HF artifact |
+
+**Offline verify means:** the miner recorded the exact pinned teacher slugs
+(`claude-fable-5` + `gpt-5.6-sol`) via an approved gateway at `xhigh` reasoning, and did
+not tamper with the bundle after proving. It is **not** a live cryptographic proof that
+OpenAI/Anthropic actually served those models on every call.
+
+### Offline vs online
+
+| Mode | Teacher model guarantee | GPU guarantee |
+|---|---|---|
+| **Offline** (registry CI today) | Bundle claims + `request_sha256` + gateway slug metadata + tamper checks | Stored `gpu_attestation.json` fields + nonce binding |
+| **Online (`--online`)** | Same as offline | Above **plus** NVIDIA NRAS JWT signature verified against NVIDIA JWKS |
+| **Online + OpenRouter ledger** | Can re-query OpenRouter generation IDs — only for `gateway=openrouter` and only with the creating API key | Same as online |
+
+For **yunwu** bundles there is currently no external teacher ledger re-check. Swapping rows
+to another model (e.g. `gpt-4o-mini`) is caught by policy + raw/verified consistency.
+Full detail: [SparkProof README — Verifying proofs](https://github.com/gittensor-model-hub/SparkProof#verifying-proofs-no-cc-vm-required).
+
 ## Miner guide
 
 If you are contributing for SN74 rewards, start with
