@@ -126,13 +126,20 @@ def check_claim_binding(bundle_dir: Path, attestation: dict | None) -> bool | No
     Returns True when the NRAS-signed nonce equals the bundle's `claim_sha256`
     (see `proof.bundle`), False when an attestation is present but unbound
     (legacy random-nonce attestations), and None when there is no attestation.
+
+    The nonce lives in the per-device submodule tokens (where NRAS also asserts
+    `x-nvidia-gpu-attestation-report-nonce-match`), not necessarily the overall
+    JWT — observed live on NRAS v3.
     """
     if attestation is None:
         return None
     from proof.bundle import claim_sha256
 
-    eat_nonce = str((attestation.get("claims") or {}).get("eat_nonce") or "")
-    return eat_nonce.lower().removeprefix("0x") == claim_sha256(bundle_dir)
+    claims = attestation.get("claims") or {}
+    nonces = [claims.get("eat_nonce")]
+    nonces += [device.get("eat_nonce") for device in (claims.get("devices") or {}).values()]
+    expected = claim_sha256(bundle_dir)
+    return any(str(nonce).lower().removeprefix("0x") == expected for nonce in nonces if nonce)
 
 
 def check_checkpoint_manifest(manifest: dict, checkpoint_path: Path) -> bool | None:

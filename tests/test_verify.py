@@ -105,7 +105,10 @@ def test_claim_binding_matches_bound_nonce(tmp_path):
 
     bound = {"passed": True, "claims": {"eat_nonce": digest.upper()}}
     unbound = {"passed": True, "claims": {"eat_nonce": "ab" * 32}}
+    # NRAS v3 puts the nonce in the per-device submodule tokens, not the overall JWT.
+    device_bound = {"passed": True, "claims": {"devices": {"GPU-0": {"eat_nonce": digest}}}}
     assert check_claim_binding(bundle, bound) is True
+    assert check_claim_binding(bundle, device_bound) is True
     assert check_claim_binding(bundle, unbound) is False
     assert check_claim_binding(bundle, None) is None
 
