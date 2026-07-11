@@ -70,7 +70,7 @@ def test_prepare_train_recipe_resolves_paths_and_disables_packing(tmp_path: Path
 
 
 def test_prepare_train_recipe_upgrades_to_flash_attention_3(tmp_path: Path, monkeypatch):
-    monkeypatch.setattr("eval.train_prep._has_flash_attn", lambda: False)
+    monkeypatch.setattr("eval.train_prep._has_flash_attn", lambda: True)
     monkeypatch.setattr("eval.train_prep._has_flash_attn_3", lambda: True)
     monkeypatch.setattr("eval.train_prep._has_cut_cross_entropy", lambda: False)
     root = tmp_path / "distill"

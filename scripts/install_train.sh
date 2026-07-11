@@ -17,12 +17,10 @@ echo ">>> syncing SparkDistill base deps"
 uv sync --extra dev
 
 echo ">>> installing Axolotl + torchvision"
-uv pip install -q axolotl torchvision numba "numpy<2.5"
+uv pip install -q axolotl torchvision numba ninja packaging einops "numpy<2.5"
 
 if [ "${SPARKDISTILL_SKIP_FLASH_ATTN:-0}" = "1" ]; then
   echo "  flash-attn: skipped (SPARKDISTILL_SKIP_FLASH_ATTN=1; training will use SDPA)"
-elif uv run --no-sync python -c "import flash_attn" 2>/dev/null; then
-  uv run --no-sync python -c "import flash_attn; print(f'  flash-attn: {flash_attn.__version__}')"
 elif uv run --no-sync python -c "from transformers.utils import is_flash_attn_3_available; import sys; sys.exit(0 if is_flash_attn_3_available() else 1)" 2>/dev/null; then
   echo "  flash-attn-3: installed"
 else
@@ -32,6 +30,8 @@ else
   if uv pip install -q "flash-attn-3" --index-url "$fa3_index" \
     && uv run --no-sync python -c "from transformers.utils import is_flash_attn_3_available; import sys; sys.exit(0 if is_flash_attn_3_available() else 1)" 2>/dev/null; then
     echo "  flash-attn-3: installed from ${fa3_index}"
+  elif uv run --no-sync python -c "import flash_attn" 2>/dev/null; then
+    uv run --no-sync python -c "import flash_attn; print(f'  flash-attn: {flash_attn.__version__} (FA3 install failed)')"
   else
     export CUDA_HOME="${CUDA_HOME:-/usr/local/cuda}"
     export PATH="$CUDA_HOME/bin:$PATH"

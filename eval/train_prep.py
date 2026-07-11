@@ -101,13 +101,12 @@ def prepare_train_recipe(
             notes.append("pad_to_sequence_len disabled for small dataset")
 
     attn = cfg.get("attn_implementation")
-    if attn == "flash_attention_2" and not _has_flash_attn():
-        if _has_flash_attn_3():
-            cfg["attn_implementation"] = "flash_attention_3"
-            notes.append("attn_implementation: flash_attention_3 (flash_attn_3 wheel)")
-        else:
-            cfg["attn_implementation"] = "sdpa"
-            notes.append("attn_implementation: sdpa (flash_attn not installed)")
+    if attn == "flash_attention_2" and _has_flash_attn_3():
+        cfg["attn_implementation"] = "flash_attention_3"
+        notes.append("attn_implementation: flash_attention_3 (flash_attn_3 wheel)")
+    elif attn == "flash_attention_2" and not _has_flash_attn():
+        cfg["attn_implementation"] = "sdpa"
+        notes.append("attn_implementation: sdpa (flash_attn not installed)")
 
     plugins = cfg.get("plugins")
     if isinstance(plugins, list) and plugins:
