@@ -323,7 +323,7 @@
       </div>
     </div>
     <div class="callout">
-      <p><strong>Proof-of-training fast path:</strong> a <em>weights-free</em> claim bundle — evaluation scores, training time, GPU claim, and a per-file hash manifest of the checkpoint, cryptographically bound to an RTX PRO 6000 CC attestation via its <code>claim_sha256</code> nonce — enables a cheap held-out re-score instead of a blind full retrain. Trained weights never leave the miner's machine: the validator reproduces the checkpoint from the public recipe and dataset. Unattested submissions fall back to retraining from source.</p>
+      <p><strong>Proof of training:</strong> a <em>weights-free</em> claim bundle — evaluation scores, training time, GPU claim, and a per-file hash manifest of the checkpoint, cryptographically bound to an RTX PRO 6000 CC attestation via its <code>claim_sha256</code> nonce. The validator verifies the proof from the published artifacts alone — attestation, nonce binding, hashes, training budget — with no retraining. Trained weights never leave the miner's machine, and the public recipe + dataset keep every merged win reproducible by anyone. Unattested submissions fall back to retraining from source.</p>
     </div>
   </section>
 
@@ -334,7 +334,7 @@
       <li><strong>Start from the current leader.</strong> Fork the frontier recipe under <code>recipes/</code> and point it at the canonical mining dataset or your own verified registry entry. Every merged win is public, so the next miner never starts from zero.</li>
       <li><strong>Train and score locally.</strong> Run <code>scripts/install_train.sh</code>, <code>scripts/prepare_mining_sft.sh</code>, then <code>scripts/train.sh recipes/qwen3.5-4b-phase1/sft-mining.yaml</code> and <code>scripts/eval.sh</code> against the held-out frontier basket. You are competing on marginal quality delta — not a self-reported leaderboard.</li>
       <li><strong>Open a narrow PR with the recipe and dataset.</strong> Commit the changed <code>sft.yaml</code> (or add a new recipe file) and cite the dataset URL or registry line. Small, focused recipe changes with a clear eval gain are easier to review and merge.</li>
-      <li><strong>Let the validator retrain from source.</strong> GitHub Actions retrains from your exact recipe + dataset and re-scores on the same harness. The PR merges only if the improvement verifies — not because you shipped weights.</li>
+      <li><strong>Let the validator verify your proof.</strong> The validator checks your published claim bundle — GPU CC attestation, <code>claim_sha256</code> nonce binding, checkpoint hash manifest, and the 5-hour training budget — via <code>eval.verify</code>. The PR merges only if the proof verifies — not because you shipped weights, and no retraining is required for attested submissions.</li>
       <li><strong>Winning recipes become shared infrastructure.</strong> Accepted runs receive <code>eval:XS</code> through <code>eval:XL</code>, enter the public run ledger, and become the next frontier every miner can fork. Copy the leader and add one optimization is expected — not cheating.</li>
     </ol>
     <div class="grid-cards">
