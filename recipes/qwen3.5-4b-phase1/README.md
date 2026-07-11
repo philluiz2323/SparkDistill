@@ -45,7 +45,22 @@ completions. Trajectories from such teachers fall back to training on the respon
 alone (no `<think>` block). Weight the `--provider` mix toward
 `anthropic` if reasoning-capture rate matters for a given run.
 
-## Commands
+## Canonical mining dataset (HF)
+
+```bash
+scripts/install_train.sh
+scripts/prepare_mining_sft.sh
+scripts/train.sh recipes/qwen3.5-4b-phase1/sft-mining.yaml
+```
+
+`scripts/install_train.sh` installs Qwen3.5's `torchvision` dependency and builds
+FlashAttention 2 for Blackwell SM120 (the first build takes several minutes).
+Set `SPARKDISTILL_SKIP_FLASH_ATTN=1` only when an SDPA fallback is intentional.
+`scripts/train.sh` resolves recipe paths from the SparkDistill root and disables
+`sample_packing` when the jsonl has fewer than 32 rows (Axolotl multipack otherwise
+crashes).
+
+## Local phase-1 trajectories
 
 ```bash
 scripts/generate_trajectories.sh --prompts data/prompts/phase1.jsonl --out data/processed/phase1_trajectories.jsonl
@@ -55,6 +70,7 @@ scripts/prepare_sft_data.sh \
   --out data/processed/phase1_sft.jsonl \
   --format messages
 
+scripts/install_train.sh
 scripts/train.sh recipes/qwen3.5-4b-phase1/sft.yaml
 scripts/eval.sh --checkpoint outputs/qwen3.5-4b-phase1 --compare-frontier
 ```

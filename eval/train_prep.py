@@ -1,0 +1,149 @@
+"""Prepare Axolotl recipe YAML for reliable local training."""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+# Axolotl multipack sampler fails on very small mixes (observed at 17 rows).
+MIN_SAMPLE_PACKING_ROWS = 32
+
+_PATH_KEYS = ("path", "dataset_prepared_path", "output_dir")
+
+
+def count_jsonl_rows(path: Path) -> int:
+    count = 0
+    with path.open(encoding="utf-8") as handle:
+        for line in handle:
+            if line.strip():
+                count += 1
+    return count
+
+
+def _has_flash_attn() -> bool:
+    try:
+        import flash_attn  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
+def _has_cut_cross_entropy() -> bool:
+    try:
+        import axolotl.integrations.cut_cross_entropy  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
+def _resolve_path(value: str, root: Path) -> str:
+    path = Path(value)
+    if path.is_absolute():
+        return str(path)
+    return str((root / path).resolve())
+
+
+def prepare_train_recipe(
+    *,
+    recipe_path: Path,
+    distill_root: Path,
+    out_path: Path | None = None,
+) -> dict[str, Any]:
+    """Return a training-safe recipe with absolute paths and runtime fallbacks."""
+    root = distill_root.resolve()
+    cfg: dict[str, Any] = yaml.safe_load(recipe_path.read_text(encoding="utf-8"))
+    if not isinstance(cfg, dict):
+        raise ValueError(f"{recipe_path} must contain a YAML mapping")
+
+    notes: list[str] = []
+    row_count: int | None = None
+
+    for key in _PATH_KEYS:
+        value = cfg.get(key)
+        if isinstance(value, str) and value.strip():
+            cfg[key] = _resolve_path(value, root)
+
+    datasets = cfg.get("datasets")
+    if isinstance(datasets, list):
+        for entry in datasets:
+            if not isinstance(entry, dict):
+                continue
+            data_path = entry.get("path")
+            if isinstance(data_path, str) and data_path.strip():
+                entry["path"] = _resolve_path(data_path, root)
+            data_path = entry.get("path")
+            if isinstance(data_path, str) and data_path.endswith(".jsonl"):
+                row_count = count_jsonl_rows(Path(data_path))
+                notes.append(f"dataset rows: {row_count}")
+
+    if row_count is not None and row_count < MIN_SAMPLE_PACKING_ROWS:
+        if cfg.get("sample_packing"):
+            cfg["sample_packing"] = False
+            notes.append(f"sample_packing disabled (<{MIN_SAMPLE_PACKING_ROWS} rows)")
+        if cfg.get("pad_to_sequence_len"):
+            cfg["pad_to_sequence_len"] = False
+            notes.append("pad_to_sequence_len disabled for small dataset")
+
+    attn = cfg.get("attn_implementation")
+    if attn == "flash_attention_2" and not _has_flash_attn():
+        cfg["attn_implementation"] = "sdpa"
+        notes.append("attn_implementation: sdpa (flash_attn not installed)")
+
+    plugins = cfg.get("plugins")
+    if isinstance(plugins, list) and plugins:
+        if not _has_cut_cross_entropy():
+            cfg.pop("plugins", None)
+            notes.append("removed CutCrossEntropyPlugin (not installed)")
+
+    destination = out_path or (root / "data" / "prepared" / f"{recipe_path.stem}.prepared.yaml")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(yaml.safe_dump(cfg, sort_keys=False), encoding="utf-8")
+
+    return {
+        "source_recipe": str(recipe_path.resolve()),
+        "prepared_recipe": str(destination.resolve()),
+        "row_count": row_count,
+        "notes": notes,
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--recipe", type=Path, required=True, help="source Axolotl yaml")
+    parser.add_argument(
+        "--root",
+        type=Path,
+        default=Path("."),
+        help="SparkDistill repo root for resolving relative paths",
+    )
+    parser.add_argument(
+        "--out",
+        type=Path,
+        default=None,
+        help="write prepared yaml here (default: data/prepared/<recipe-stem>.prepared.yaml)",
+    )
+    args = parser.parse_args(argv)
+
+    try:
+        result = prepare_train_recipe(
+            recipe_path=args.recipe,
+            distill_root=args.root,
+            out_path=args.out,
+        )
+    except Exception as exc:
+        print(f"train prep failed: {exc}", file=sys.stderr)
+        return 1
+
+    print(json.dumps(result, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

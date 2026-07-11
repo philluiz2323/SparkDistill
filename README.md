@@ -149,8 +149,10 @@ scripts/generate_trajectories.sh --prompts data/prompts/phase1.jsonl --out data/
 # 3. fold captured reasoning into <think>-tagged SFT records (messages format)
 scripts/prepare_sft_data.sh --in data/processed/phase1_trajectories.jsonl --out data/processed/phase1_sft.jsonl --format messages
 
-# 4. train the Phase 1 student (Qwen3.5-4B) on those trajectories
-scripts/train.sh recipes/qwen3.5-4b-phase1/sft.yaml
+# 4. train on canonical mining data (or phase1_sft.jsonl with sft.yaml)
+scripts/install_train.sh
+scripts/prepare_mining_sft.sh
+scripts/train.sh recipes/qwen3.5-4b-phase1/sft-mining.yaml
 
 # 5. score the resulting checkpoint against the frontier
 scripts/eval.sh --checkpoint outputs/qwen3.5-4b-phase1 --compare-frontier

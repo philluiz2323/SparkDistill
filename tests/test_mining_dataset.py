@@ -1,8 +1,6 @@
 import json
 from pathlib import Path
 
-import pytest
-
 from eval.mining_dataset import (
     DEFAULT_MINING_DATASET_REPO,
     aggregate_and_publish_mining_dataset,

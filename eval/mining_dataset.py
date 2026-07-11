@@ -32,8 +32,9 @@ def publish_sft_dataset(
     private: bool = False,
 ) -> dict[str, Any]:
     """Upload mixed SFT rows + mix_manifest.json to a Hugging Face datasets repo."""
-    from datasets import Dataset
     from huggingface_hub import HfApi
+
+    from datasets import Dataset
 
     rows: list[dict[str, Any]] = []
     with sft_path.open(encoding="utf-8") as handle:

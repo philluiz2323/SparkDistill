@@ -398,7 +398,12 @@ scripts/generate_trajectories.sh --prompts data/prompts/phase1.jsonl --out data/
 scripts/prepare_sft_data.sh --in data/processed/phase1_trajectories.jsonl --out data/processed/phase1_sft.jsonl --format messages
 
 # Training (if your PR touches recipes/)
-scripts/train.sh recipes/qwen3.5-4b-phase1/sft.yaml
+scripts/install_train.sh
+scripts/prepare_mining_sft.sh
+scripts/train.sh recipes/qwen3.5-4b-phase1/sft-mining.yaml
+
+# Or train on local phase-1 trajectories:
+# scripts/train.sh recipes/qwen3.5-4b-phase1/sft.yaml
 
 # Quality eval — always run before opening a PR
 scripts/eval.sh --checkpoint outputs/qwen3.5-4b-phase1 --compare-frontier

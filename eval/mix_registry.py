@@ -23,7 +23,6 @@ records, and writes a small ``mix_manifest.json`` that auditors can re-check.
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import re
 import sys
