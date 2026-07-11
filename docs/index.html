@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SPARKDISTILL — reasoning distillation for the SparkInfer runtime</title>
-<meta name="description" content="SPARKDISTILL turns frontier teacher models into small, fast student checkpoints via trajectory distillation and Axolotl fine-tuning, scored and rewarded through SN74 on Gittensor.">
+<title>SPARKDISTILL — verified Triton intelligence on Blackwell</title>
+<meta name="description" content="SPARKDISTILL is a trustless pipeline for building Triton-specialist AI from pinned frontier teachers, Blackwell confidential-computing proofs, and deterministic frontier evaluation through SN74 on Gittensor.">
 <style>
   :root {
     --bg: #f8fbff;
@@ -193,11 +193,11 @@
   <div class="wrap">
     <div class="brand" aria-label="SparkDistill"><span class="spark">SP</span><span class="bolt">⚡</span><span class="spark">RK</span><span class="distill">DISTILL</span></div>
     <nav class="links">
-      <a href="#why">Why</a>
-      <a href="#triton">Triton track</a>
-      <a href="#how">How it works</a>
-      <a href="#quickstart">Quickstart</a>
-      <a href="#roadmap">Roadmap</a>
+      <a href="#pipeline">Pipeline</a>
+      <a href="#sparkproof">SparkProof</a>
+      <a href="#verification">Verification</a>
+      <a href="#evaluation">Evaluation</a>
+      <a href="#mine">Mine</a>
       <a href="https://github.com/gittensor-model-hub/SparkDistill">GitHub</a>
     </nav>
   </div>
@@ -206,149 +206,177 @@
 <div class="wrap">
   <section class="hero">
     <img class="banner" src="images/banner.png" alt="SparkDistill banner">
-    <span class="pill hero-badge">World's first Triton-language-specialized LLM track — engineering faster AI engineering</span>
-    <h1>Trustless &amp; fast-improving AI models — powered by SN74 on <a href="https://gittensor.io/">Gittensor</a>.</h1>
-    <p class="tagline"><strong><span class="spark-word">SPARK</span><span class="distill-word">DISTILL</span></strong> turns frontier teacher models into small, fast student checkpoints — via trajectory distillation and Axolotl fine-tuning — that <code>sparkinfer</code> serves at the edge on consumer and edge Blackwell GPUs.</p>
+    <span class="pill hero-badge">Frontier teachers propose · Blackwell proves · deterministic evaluation rewards</span>
+    <h1>Verified Triton intelligence for faster AI.</h1>
+    <p class="tagline"><strong><span class="spark-word">SPARK</span><span class="distill-word">DISTILL</span></strong> turns pinned frontier-model trajectories into GPU-validated training data, teaches compact students to develop, debug, and optimize Triton kernels, and rewards only measured improvements over the current frontier.</p>
     <div class="cta-row">
-      <a class="btn primary" href="https://github.com/gittensor-model-hub/SparkDistill">View on GitHub</a>
-      <a class="btn ghost" href="https://github.com/gittensor-model-hub/SparkDistill/blob/main/docs/miner-guide.md">Miner guide</a>
-      <a class="btn ghost" href="https://gittensor.io/">Built on Gittensor</a>
+      <a class="btn primary" href="https://github.com/gittensor-model-hub/SparkDistill/blob/main/docs/miner-guide.md">Start mining</a>
+      <a class="btn ghost" href="https://github.com/gittensor-model-hub/SparkProof">Explore SparkProof</a>
+      <a class="btn ghost" href="https://huggingface.co/datasets/gittensor-model-hub/sparkproof-mining">Verified dataset</a>
     </div>
   </section>
 
-  <section id="triton">
-    <h2>Triton track</h2>
-    <p class="lede">A dedicated distillation track that turns <a href="https://github.com/gittensor-model-hub/SparkDistill/tree/main/tritonbench">TritonBench</a> into a training loop for a <strong>Triton-language-specialized LLM</strong> — a student model whose whole job is writing and optimizing Triton GPU kernels, so the AI engineering loop around kernel work gets faster end to end.</p>
+  <section id="pipeline">
+    <h2>One verifiable improvement loop</h2>
+    <p class="lede">The goal is a latest-<a href="https://github.com/triton-lang/triton">Triton</a> specialist stack—Triton 3.7.1 on NVIDIA Blackwell today—that gets better through open competition rather than uncheckable claims. <a href="https://gittensor.io/">SN74 on Gittensor</a> rewards verified dataset contributions and verified model-quality gains inside the existing subnet.</p>
     <div class="grid-cards">
       <div class="card">
-        <h3>Pinned to <a href="https://github.com/triton-lang/triton">Triton 3.7.1</a></h3>
-        <p>Targets NVIDIA Blackwell only (workstation SM12x and datacenter SM10x profiles); older architectures are rejected at validation time.</p>
+        <span class="pill">01 · Generate</span>
+        <h3>Frontier models propose</h3>
+        <p>Only the pinned teacher basket—Claude Fable 5 and GPT-5.6 Sol at <code>xhigh</code> reasoning—may generate production trajectories. Arbitrary or cheaper substitute models are rejected by policy.</p>
       </div>
       <div class="card">
-        <h3>Qwen3.5-4B student</h3>
-        <p>Distilled from GPT 5.6 Sol + Claude Fable 5 teacher trajectories into a dense student sized to iterate fast on Blackwell-class hardware.</p>
+        <span class="pill">02 · Prove</span>
+        <h3>Blackwell executes</h3>
+        <p>Generated Triton kernels are compiled, executed, numerically checked, screened for cheating and eval leakage, then proved on an NVIDIA RTX PRO 6000 Blackwell confidential-computing node.</p>
       </div>
       <div class="card">
-        <h3>Benchmarked on TritonBench</h3>
-        <p>Scored against 184 real-world operators (TritonBench-G) and 166 PyTorch-aligned tasks (TritonBench-T) from the <a href="https://arxiv.org/pdf/2502.14752">TritonBench (ACL 2025 Findings)</a> paper.</p>
+        <span class="pill">03 · Distill</span>
+        <h3>Students learn verified work</h3>
+        <p>Accepted engineering rationale and final kernels become reasoning-format SFT records. Axolotl recipes train compact students whose job is Triton translation, correctness, debugging, profiling, and optimization.</p>
       </div>
       <div class="card">
-        <h3>Served straight into Claude Code</h3>
-        <p>Exposed via an OpenAI-compatible API so the distilled kernel expert can sit behind an agentic CLI and write/optimize Triton kernels directly.</p>
-      </div>
-    </div>
-    <p><a href="https://github.com/gittensor-model-hub/SparkDistill/blob/main/tritonbench/PROJECT.md">Read the Triton-track architecture doc →</a></p>
-  </section>
-
-  <section id="why">
-    <h2>Why <span class="spark-word">SPARK</span><span class="distill-word">DISTILL</span></h2>
-    <p class="lede"><code>sparkinfer</code> makes inference fast; <span class="spark-word">SPARK</span><span class="distill-word">DISTILL</span> makes the <em>model</em> worth serving fast. Its goal is <strong>reasoning distillation</strong>: teach a student model to reproduce a teacher's step-by-step reasoning process, not just its final answers.</p>
-    <div class="grid-cards">
-      <div class="card">
-        <h3>Trajectory generation</h3>
-        <p>Prompt a basket of teacher models on reasoning-heavy tasks (multi-step math, logic, proof-style code correctness), capturing chain-of-thought separately from the final response where the provider exposes one.</p>
-      </div>
-      <div class="card">
-        <h3>Reasoning-format SFT data</h3>
-        <p>Fold captured reasoning into the training target as a leading <code>&lt;think&gt;...&lt;/think&gt;</code> block — matching Qwen3's native chat template — so the student learns to reason, not just answer.</p>
-      </div>
-      <div class="card">
-        <h3>Distillation recipes</h3>
-        <p>Axolotl-based SFT/LoRA recipes tuned per student model and per phase, sized for the hardware SparkInfer already targets.</p>
-      </div>
-      <div class="card">
-        <h3>Quality eval</h3>
-        <p>A benchmark harness (BFCL, GSM8K, HumanEval, IFEval, MMLU-Pro, plus AIME and GPQA-Diamond) that scores a student checkpoint against its teacher and the current frontier.</p>
+        <span class="pill">04 · Evaluate</span>
+        <h3>The frontier moves only on proof</h3>
+        <p>The validator compares the candidate and current frontier on the same held-out benchmark basket. SN74 rewards only the verified marginal gain; the winning public recipe and dataset become the next starting point.</p>
       </div>
     </div>
   </section>
 
-  <section id="layout">
-    <h2>Layout &amp; scoring</h2>
+  <section id="sparkproof">
+    <h2>How SparkProof works</h2>
+    <p class="lede"><a href="https://github.com/gittensor-model-hub/SparkProof">SparkProof</a> is the data-provenance layer. It does not trust a teacher's plausible-looking code or a miner's CSV. It keeps a row only after the code survives independent validation and the complete run is bound to confidential-computing evidence.</p>
+    <ol class="steps">
+      <li><strong>Build diverse training tasks.</strong> Seeded, stratified sampling draws from official Triton API documentation, semantics and tutorials, deterministic kernel mutations, PyTorch-to-Triton translation tasks, self-evolution, and failure mining. TritonBench remains evaluation-only.</li>
+      <li><strong>Call only pinned frontier teachers.</strong> Requests go through an approved gateway—OpenRouter or yunwu—to <code>claude-fable-5</code> and <code>gpt-5.6-sol</code> with <code>reasoning.effort=xhigh</code>. The exact request body is fingerprinted.</li>
+      <li><strong>Validate outside the model.</strong> The compiler, PyTorch oracle, anti-cheating checks, numerical tests, and Blackwell GPU—not the teacher—decide whether a kernel is correct. Bad candidates may be repaired; failures are preserved separately.</li>
+      <li><strong>Prove on confidential hardware.</strong> Production runs execute on an NVIDIA RTX PRO 6000 Blackwell CC node. NVIDIA attestation evidence is nonce-bound to the raw trajectory archive so it cannot be reused for a different dataset.</li>
+      <li><strong>Seal the verified subset.</strong> SparkProof writes a <code>sparkproof-2</code> manifest, Merkle root, validation report, raw and verified trajectories, release-gate report, dataset hash, and <code>gpu_attestation.json</code>.</li>
+      <li><strong>Publish data and proof together.</strong> Hugging Face receives the SFT-ready rows plus the complete <code>proof/</code> directory, allowing validators to replay the checks without access to the miner's machine.</li>
+    </ol>
+    <div class="callout">
+      <p><strong>Teacher outputs are hypotheses, not ground truth.</strong> Production accepts only the pinned frontier-model basket, but correctness comes from compile-and-execute validation, independent numerical tests, decontamination, and the attested Blackwell GPU.</p>
+    </div>
+  </section>
+
+  <section id="verification">
+    <h2>Cheap verification by anyone</h2>
+    <p class="lede">Proving requires the Blackwell RTX PRO 6000 CC node. Verifying does not. GitHub Actions, a laptop, or any CPU host can download the published <code>proof/</code> directory and independently check policy, hashes, Merkle consistency, raw-to-verified filtering, and attestation binding.</p>
     <div class="table-scroll">
       <table>
-        <thead><tr><th>Path</th><th>What</th></tr></thead>
+        <thead><tr><th>Verifier check</th><th>What it establishes</th></tr></thead>
         <tbody>
-          <tr><td><code>teacher/</code></td><td>teacher-trajectory generation — Anthropic (Fable 5) and OpenAI (GPT 5.6) only</td></tr>
-          <tr><td><code>recipes/</code></td><td>Axolotl training recipes per student model / phase</td></tr>
-          <tr><td><code>eval/</code></td><td>quality benchmark harness + student-vs-frontier scoring + cheap proof verification</td></tr>
-          <tr><td><code>proof/</code></td><td>proof-of-training bundle packaging + Hugging Face publishing</td></tr>
-          <tr><td><code>runs/</code></td><td>immutable ledger of merged, verified runs</td></tr>
+          <tr><td>Pinned teacher policy</td><td>Every row names an allowed frontier teacher and approved gateway model slug; substitute slugs fail production verification.</td></tr>
+          <tr><td><code>request_sha256</code></td><td>The stored prompt, model slug, generation settings, and <code>xhigh</code> reasoning request match the committed request fingerprint.</td></tr>
+          <tr><td>Validation reports</td><td>Only rows that passed Triton syntax, compile/execute, numerical correctness, and production policy are included in the verified dataset.</td></tr>
+          <tr><td>Raw → verified consistency</td><td>The miner cannot replace accepted rows after validation or hide where the verified subset came from.</td></tr>
+          <tr><td>Merkle root + dataset SHA-256</td><td>Any post-proof edit changes the committed bundle root or the registry-pinned trajectory hash.</td></tr>
+          <tr><td>GPU CC nonce binding</td><td>The NVIDIA attestation evidence is tied to the raw trajectory archive used in that proof.</td></tr>
+          <tr><td>Online NVIDIA verification</td><td><code>sparkproof-verify --online</code> additionally verifies the NRAS JWT signature against NVIDIA JWKS.</td></tr>
         </tbody>
       </table>
     </div>
-    <p style="margin-top:18px;"><strong>Scoring is quality-only.</strong> SN74 pays each merged PR for its verified marginal quality improvement over the current best ("frontier") checkpoint, labeled <strong>XL / L / M / S / XS</strong> by the deterministic eval loop. Tooling, bench, docs, and refactors are welcome but score 0 unless they produce a verified frontier improvement.</p>
-  </section>
-
-  <section id="how">
-    <h2>How a PR gets merged &amp; rewarded</h2>
-    <p class="lede"><strong>No trained weights are ever the merged artifact.</strong> A submission is a recipe + the dataset it was trained on — both fully reproducible from source — plus the eval numbers that resulted from running them.</p>
-    <ol class="steps">
-      <li>A miner picks (or generates) a dataset — teacher trajectories from <code>teacher/generate.py</code>, optionally reformatted for reasoning via <code>teacher/format.py</code> — and a training recipe (an Axolotl <code>sft.yaml</code> under <code>recipes/</code>).</li>
-      <li>They train and score locally against the current frontier (<code>scripts/eval.sh</code>).</li>
-      <li>If it beats the frontier, they open a PR containing the recipe file and the dataset (or a public link to it) plus their local eval numbers.</li>
-      <li>The evaluator retrains from that exact recipe + dataset on its own hardware and re-scores against the frontier — the source of truth, nothing is trusted on the miner's word.</li>
-      <li>If it clears the quality gate, it's merged and labeled <strong>XL / L / M / S / XS</strong> by the measured delta, and the new checkpoint becomes the frontier.</li>
-    </ol>
     <div class="callout">
-      <p><strong>Why share the recipe and dataset instead of just the weights:</strong> whoever holds the frontier ("the king") is required to have a fully public recipe + dataset behind their merged checkpoint. Every other miner can fork the current best and try to beat it — "copy the leader and add one optimization" is a valid, expected way to compete.</p>
+      <p><strong>Exact trust boundary:</strong> SparkProof proves the recorded request, validation process, hardware evidence, and post-proof integrity. Commercial APIs do not provide provider-signed inference receipts, so offline verification cannot cryptographically prove what OpenAI or Anthropic executed internally. OpenRouter generation IDs can be re-queried with the creating key; yunwu currently has no equivalent external ledger.</p>
     </div>
   </section>
 
-  <section id="quickstart">
-    <h2>Quickstart</h2>
-    <pre><code># 1. install
-uv sync
-
-# 2. generate teacher trajectories (needs teacher API keys, see .env.example)
-scripts/generate_trajectories.sh --prompts data/prompts/phase1.jsonl --out data/processed/phase1_trajectories.jsonl
-
-# 3. fold captured reasoning into &lt;think&gt;-tagged SFT records (messages format)
-scripts/prepare_sft_data.sh --in data/processed/phase1_trajectories.jsonl --out data/processed/phase1_sft.jsonl --format messages
-
-# 4. train the Phase 1 student (Qwen3.5-4B) on those trajectories
-scripts/train.sh recipes/qwen3.5-4b-phase1/sft.yaml
-
-# 5. score the resulting checkpoint against the frontier
-scripts/eval.sh --checkpoint outputs/qwen3.5-4b-phase1 --compare-frontier</code></pre>
+  <section id="datasets">
+    <h2>From miner bundles to one canonical dataset</h2>
+    <p class="lede">A miner publishes its verified bundle to Hugging Face and opens a text-only PR adding the URL and pinned <code>trajectories_sha256</code> to <code>datasets/registry.jsonl</code>. The registry workflow runs before merge:</p>
+    <ol class="steps2">
+      <li>Download the miner's complete <code>proof/</code> directory from Hugging Face.</li>
+      <li>Re-run production SparkProof verification against the pinned generator and teacher policy.</li>
+      <li>Confirm Blackwell CC evidence, release-gate success, row count, and the exact SHA-256 claimed by the PR.</li>
+      <li>Require at least 25 verified rows for <code>dataset:xs</code>; larger contributions earn <code>s</code>, <code>m</code>, <code>l</code>, or <code>xl</code>.</li>
+      <li>Deduplicate and aggregate all accepted registry entries into <a href="https://huggingface.co/datasets/gittensor-model-hub/sparkproof-mining"><code>gittensor-model-hub/sparkproof-mining</code></a> with a provenance manifest.</li>
+      <li>Merge only after the canonical mining dataset publishes successfully. Rejected proofs are labeled <code>dataset:REJECT</code> and closed.</li>
+    </ol>
+    <div class="cta-row">
+      <a class="btn primary" href="https://huggingface.co/datasets/gittensor-model-hub/sparkproof-mining">Open canonical dataset</a>
+      <a class="btn ghost" href="https://github.com/gittensor-model-hub/SparkDistill/blob/main/datasets/README.md">Registry specification</a>
+    </div>
   </section>
 
-  <section id="proof">
-    <h2>Proof of training</h2>
-    <p>A submission's eval claim can skip full retrain-verification if the miner proves it instead of just asserting it — a shortcut for the eval <em>numbers</em>, not a replacement for sharing the recipe + dataset.</p>
-    <ol class="steps2">
-      <li>Fine-tune locally and score against the current frontier (<code>scripts/eval.sh</code>).</li>
-      <li>If you beat the frontier, attest the GPU you trained/evaluated on — e.g. a Blackwell RTX PRO 6000 Server Edition CC node (<code>python -m eval.attestation</code>).</li>
-      <li>Package the checkpoint + eval scores into a bundle and publish it to Hugging Face (<code>python -m proof.bundle</code>, <code>python -m proof.publish</code>) — the resulting HF URL is your proof link.</li>
-      <li>Open a PR referencing the HF proof link (and attestation, if collected), plus the recipe + dataset link.</li>
-      <li>The evaluator cheaply re-verifies — a small held-out re-run of your claimed scores plus attestation validation, not a full retrain — and merges if it checks out (<code>python -m eval.verify</code>).</li>
-      <li>The merge is appended to the immutable <code>runs/ledger.jsonl</code> log, and the new checkpoint becomes the frontier.</li>
-    </ol>
-    <p>Unattested submissions still go through the slower path: full retrain-from-source verification.</p>
+  <section id="evaluation">
+    <h2>Evaluation controls the frontier</h2>
+    <p class="lede">Dataset verification answers “is this training data authentic and GPU-validated?” Frontier evaluation answers “did this public dataset and recipe make the student measurably better?” They are separate gates.</p>
+    <div class="grid-cards">
+      <div class="card">
+        <h3>Only public inputs count</h3>
+        <p>The training submission is the public recipe plus a registry-backed dataset—not a secret checkpoint. Anyone can fork the current leader and try the next improvement.</p>
+      </div>
+      <div class="card">
+        <h3>Validator-owned evaluation</h3>
+        <p>Miners cannot submit the benchmark used to reward themselves. Frozen held-out prompts and protected TritonBench material remain isolated from training generation and decontamination fails closed if the corpus is unavailable.</p>
+      </div>
+      <div class="card">
+        <h3>Same run, same basket</h3>
+        <p>The candidate and current frontier are evaluated under the same deterministic harness. Reward is based on marginal quality delta, not a miner's claimed score or checkpoint rank.</p>
+      </div>
+      <div class="card">
+        <h3>Verified wins become shared</h3>
+        <p>Passing improvements receive <code>eval:XS</code> through <code>eval:XL</code>, are appended to the public run ledger, and become the new frontier every miner can build on.</p>
+      </div>
+    </div>
+    <div class="callout">
+      <p><strong>Proof-of-training fast path:</strong> a checkpoint bundle, evaluation scores, training time, GPU claim, and optional RTX PRO 6000 CC attestation can enable a cheap held-out re-score instead of a full retrain. It never replaces the public recipe and dataset; unattested submissions fall back to retraining from source.</p>
+    </div>
+  </section>
+
+  <section id="mine">
+    <h2>Mine the dataset track</h2>
+    <p class="lede">A production miner needs a Blackwell RTX PRO 6000 confidential-computing VM, a pinned SparkProof checkout, teacher-gateway credentials, and a Hugging Face token. Verification and registry review happen automatically after publication.</p>
+    <pre><code># On a Blackwell RTX PRO 6000 CC VM
+git clone https://github.com/gittensor-model-hub/SparkProof.git
+git clone https://github.com/gittensor-model-hub/SparkDistill.git
+cd SparkProof
+cp .env.example .env
+scripts/install.sh
+
+# Generate → best-of-N/repair → compile/execute → attest → release gate → publish
+scripts/run_triton_pipeline.sh \
+  --run-id my-triton-run \
+  --limit 25 \
+  --release-gate \
+  --publish your-hf-user/sparkproof-triton-v1
+
+# Build the text-only registry line for your PR
+cd ../SparkDistill
+scripts/registry_line.sh \
+  --bundle ../SparkProof/bundles/my-triton-run \
+  --miner your-github-handle \
+  --repo-id your-hf-user/sparkproof-triton-v1</code></pre>
+    <p>Production dataset PRs must contain exactly one append to <code>datasets/registry.jsonl</code>. The first merge/reward tier is 25 verified rows. See the <a href="https://github.com/gittensor-model-hub/SparkDistill/blob/main/docs/miner-guide.md">complete miner guide</a> for policies, labels, failure modes, and the training track.</p>
   </section>
 
   <section id="roadmap">
-    <h2>Roadmap</h2>
+    <h2>Build toward the specialist stack</h2>
     <div class="roadmap-item">
       <span class="pill">Phase 1</span>
-      <h3>Qwen3.5-4B proof of concept</h3>
-      <p>Prove the trajectory-generation → Axolotl SFT → eval-harness loop end to end on a dense student model that's cheap to iterate on and fits comfortably on RTX PRO 6000 Blackwell-class hardware. Dataset registry PRs auto-aggregate into <a href="https://huggingface.co/datasets/gittensor-model-hub/sparkproof-mining">gittensor-model-hub/sparkproof-mining</a> before merge.</p>
+      <h3>Dense Triton specialist</h3>
+      <p>Close the full SparkProof → canonical dataset → Axolotl SFT → held-out evaluation loop on Qwen3.5-4B, with every accepted training row and frontier improvement independently verifiable.</p>
     </div>
     <div class="roadmap-item">
       <span class="pill">Phase 2</span>
-      <h3>Qwen3.6-35B-A3B</h3>
-      <p>Extend the pipeline to the MoE student model that matches SparkInfer's own MoE decode focus, once Phase 1's loop is proven and the eval basket is stable.</p>
+      <h3>MoE kernel expert</h3>
+      <p>Extend the verified data and recipe loop to Qwen3.6-35B-A3B, aligned with <code>sparkinfer</code>'s MoE serving focus while preserving the same public provenance and evaluation gates.</p>
     </div>
     <div class="roadmap-item">
       <span class="pill">Phase 3</span>
-      <h3>Continuous distillation</h3>
-      <p>Feed verified frontier checkpoints back into SparkInfer's benchmark and eval-trust pipeline automatically, closing the loop between model quality and serving speed.</p>
+      <h3>Continuous verified improvement</h3>
+      <p>Feed every verified frontier back into generation, training, evaluation, and <code>sparkinfer</code> serving so kernel intelligence and edge inference performance improve together.</p>
     </div>
   </section>
 
   <section id="get-involved">
-    <h2>Get involved</h2>
-    <p>If you are contributing for SN74 rewards, start with the <a href="https://github.com/gittensor-model-hub/SparkDistill/blob/main/docs/miner-guide.md">miner guide</a> — it explains what scores, what gets rejected, and the local commands to run before opening a PR. Or dive straight into the <a href="https://github.com/gittensor-model-hub/SparkDistill">source on GitHub</a>.</p>
+    <h2>Build the frontier in public</h2>
+    <p>Contribute verified datasets, better public recipes, or measurable evaluation improvements through SN74. Every accepted win becomes reusable infrastructure for the next miner—not a private moat.</p>
+    <div class="cta-row">
+      <a class="btn primary" href="https://github.com/gittensor-model-hub/SparkDistill/blob/main/docs/miner-guide.md">Read the miner guide</a>
+      <a class="btn ghost" href="https://github.com/gittensor-model-hub/SparkDistill">View source</a>
+      <a class="btn ghost" href="https://github.com/gittensor-model-hub/SparkProof">Verify the proof layer</a>
+    </div>
   </section>
 </div>
 
