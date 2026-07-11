@@ -394,6 +394,8 @@ def _git_show(ref: str, path: Path) -> str:
 
 
 def main(argv: list[str] | None = None) -> int:
+    from eval.mining_dataset import DEFAULT_MINING_DATASET_REPO, mining_dataset_repo
+
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--base-ref", default="origin/main", help="git ref for the merge base registry")
     parser.add_argument("--head-ref", default="HEAD", help="git ref for the PR head registry")
@@ -438,8 +440,6 @@ def main(argv: list[str] | None = None) -> int:
         help="skip aggregating into the canonical mining dataset (local dev only)",
     )
     args = parser.parse_args(argv)
-
-    from eval.mining_dataset import DEFAULT_MINING_DATASET_REPO, mining_dataset_repo
 
     base_text = _git_show(args.base_ref, REGISTRY_PATH)
     head_text = _git_show(args.head_ref, REGISTRY_PATH)
