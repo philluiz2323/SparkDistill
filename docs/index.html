@@ -198,6 +198,7 @@
       <a href="#sparkproof">SparkProof</a>
       <a href="#verification">Verification</a>
       <a href="#evaluation">Evaluation</a>
+      <a href="#triton">Train</a>
       <a href="#mine">Mine</a>
       <a href="https://github.com/gittensor-model-hub/SparkDistill">GitHub</a>
     </nav>
@@ -322,6 +323,39 @@
     </div>
     <div class="callout">
       <p><strong>Proof-of-training fast path:</strong> a checkpoint bundle, evaluation scores, training time, GPU claim, and optional RTX PRO 6000 CC attestation can enable a cheap held-out re-score instead of a full retrain. It never replaces the public recipe and dataset; unattested submissions fall back to retraining from source.</p>
+    </div>
+  </section>
+
+  <section id="triton">
+    <h2>Train, share the recipe, move the frontier</h2>
+    <p class="lede">Dataset miners feed the canonical mining mix; training miners turn that verified data into better students. The submission is never a secret checkpoint — it is the <strong>public Axolotl recipe</strong> plus the <strong>registry-backed dataset</strong> behind it. That design keeps improvement continuous, competitive, and fast.</p>
+    <ol class="steps">
+      <li><strong>Start from the current leader.</strong> Fork the frontier recipe under <code>recipes/</code> and point it at the canonical mining dataset or your own verified registry entry. Every merged win is public, so the next miner never starts from zero.</li>
+      <li><strong>Train and score locally.</strong> Run <code>scripts/train.sh</code> on your recipe, then <code>scripts/eval.sh</code> against the held-out frontier basket. You are competing on marginal quality delta — not a self-reported leaderboard.</li>
+      <li><strong>Open a narrow PR with the recipe and dataset.</strong> Commit the changed <code>sft.yaml</code> (or add a new recipe file) and cite the dataset URL or registry line. Small, focused recipe changes with a clear eval gain are easier to review and merge.</li>
+      <li><strong>Let the validator retrain from source.</strong> GitHub Actions retrains from your exact recipe + dataset and re-scores on the same harness. The PR merges only if the improvement verifies — not because you shipped weights.</li>
+      <li><strong>Winning recipes become shared infrastructure.</strong> Accepted runs receive <code>eval:XS</code> through <code>eval:XL</code>, enter the public run ledger, and become the next frontier every miner can fork. Copy the leader and add one optimization is expected — not cheating.</li>
+    </ol>
+    <div class="grid-cards">
+      <div class="card">
+        <h3>Continuous improvement</h3>
+        <p>Verified datasets aggregate into <code>sparkproof-mining</code>; verified recipes stack into a public frontier. Each accepted PR raises the bar the whole subnet trains against.</p>
+      </div>
+      <div class="card">
+        <h3>Open competition</h3>
+        <p>No private moats: whoever holds the frontier must have a fully public recipe and dataset behind it. Anyone can fork, experiment, and submit the next measurable win.</p>
+      </div>
+      <div class="card">
+        <h3>Move fast</h3>
+        <p>Reward tiers (<code>eval:XS</code>–<code>XL</code>) pay for verified marginal gains, not maintainer opinion. Tight recipe PRs, fast local eval loops, and the proof-of-training fast path keep the improvement cycle short.</p>
+      </div>
+    </div>
+    <div class="callout">
+      <p><strong>The loop closes in public:</strong> SparkProof miners grow verified Triton data → training miners distill better students from shared recipes → evaluation moves the frontier only on proof → the new leader's recipe and dataset become everyone's next starting point. That is how a latest-<a href="https://github.com/triton-lang/triton">Triton</a> specialist stack keeps improving without slowing down for trust.</p>
+    </div>
+    <div class="cta-row">
+      <a class="btn primary" href="https://github.com/gittensor-model-hub/SparkDistill/tree/main/recipes">Browse recipes</a>
+      <a class="btn ghost" href="https://github.com/gittensor-model-hub/SparkDistill/blob/main/docs/miner-guide.md#training-track">Training track guide</a>
     </div>
   </section>
 
