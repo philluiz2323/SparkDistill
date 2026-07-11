@@ -312,25 +312,38 @@ much cheaper verification pass:
 # install the attestation + Hugging Face publishing extras
 uv sync --extra proof
 
-# 1. (optional) attest the GPU you trained/evaluated on, e.g. a Blackwell RTX PRO 6000
-#    Server Edition confidential-computing node
-python -m eval.attestation --out runs/<run-id>/attestation.json
-
-# 2. package checkpoint + eval scores + training claims into a bundle, publish it to HF
+# 1. package the CLAIM into a bundle — eval scores + training claims + a per-file
+#    sha256 manifest of your checkpoint. The weights themselves are NOT uploaded:
+#    the validator reproduces your checkpoint locally from the recipe + dataset.
 python -m proof.bundle --checkpoint outputs/<your-checkpoint> --scores eval/results/candidate.json \
     --run-id <run-id> --out proof/_bundles/<run-id> \
     --train-hours 4.2 --train-gpu "NVIDIA RTX PRO 6000 Blackwell" \
     --dataset-url https://huggingface.co/datasets/<user>/<merged-dataset>
 # or, for a cross-miner mix:
 #   --mix-manifest data/processed/mix_manifest.json
+# note the printed claim_sha256
+
+# 2. attest the GPU you trained/evaluated on, passing the claim_sha256 as the nonce
+#    so the NRAS-signed token cryptographically commits YOUR claim to YOUR GPU
+python -m eval.attestation --nonce <claim_sha256> --out runs/<run-id>/attestation.json
+
+# 3. publish the (small, weights-free) bundle
 python -m proof.publish --bundle proof/_bundles/<run-id> --repo-id <your-hf-username>/sparkdistill-<run-id>
 ```
 
 Put the printed Hugging Face URL — and, if you ran it, your attestation.json — in your
-PR. The evaluator runs `eval.verify`: a small held-out re-run of your claimed scores
-(not the full basket) plus attestation validation if you provided it. If your claim
-doesn't hold up within tolerance, the PR is rejected outright — a proof bundle that
-misrepresents its scores is treated as worse than no bundle at all, not just "unverified."
+PR. The validator runs `eval.verify`: it reproduces your checkpoint locally from the
+recipe + dataset (`--checkpoint <local-dir>`), does a small held-out re-run of your
+claimed scores (not the full basket), and checks the attestation — including whether
+its `eat_nonce` matches the bundle's recomputed `claim_sha256` (`claim_bound` in the
+report). If your claim doesn't hold up within tolerance, the PR is rejected outright —
+a proof bundle that misrepresents its scores is treated as worse than no bundle at
+all, not just "unverified."
+
+For the `triton` domain score, serve your checkpoint with the **pinned** vLLM stack so
+your numbers are comparable with the validator's re-run — `scripts/install_serve.sh`
+installs it in a dedicated venv, and the eval configs use greedy decoding
+(`temperature: 0.0`) for the same reason. Do not change either.
 
 Training-track claims are enforced too: `--train-hours` beyond the **5-hour wall-clock
 budget** is `eval:REJECT`, `--train-gpu` must be an **RTX PRO 6000** CC node, and when

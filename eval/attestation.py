@@ -48,9 +48,14 @@ def attest_gpu(
     nras_gpu_url: str = DEFAULT_NRAS_GPU_URL,
     rim_url: str = DEFAULT_RIM_URL,
     ocsp_url: str = DEFAULT_OCSP_URL,
+    nonce: str | None = None,
 ) -> AttestationResult:
     """Collect local GPU evidence and verify it (by default against NVIDIA's Remote
     Attestation Service — NRAS) against the appraisal policy at `policy_path`.
+
+    `nonce` (a hex string) binds the attestation to specific content — pass a proof
+    bundle's `claim_sha256` so the NRAS-signed EAT commits that exact claim to this
+    GPU (`eat_nonce` in the token; `eval.verify` recomputes and compares it).
 
     Requires `nv-attestation-sdk` (`uv sync --extra proof`) and, for `environment="REMOTE"`,
     a GPU SKU that supports Confidential Computing (Hopper H100+, including the Blackwell
@@ -62,6 +67,8 @@ def attest_gpu(
 
     client = nv_attestation.Attestation()
     client.set_name("sparkdistill-proof")
+    if nonce is not None:
+        client.set_nonce(nonce)
     if service_key is not None:
         client.set_service_key(service_key)
     client.add_verifier(nv_attestation.Devices.GPU, env, nras_gpu_url, "", ocsp_url=ocsp_url, rim_url=rim_url)
@@ -125,10 +132,17 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--environment", default="REMOTE", choices=["LOCAL", "REMOTE", "TEST"])
     parser.add_argument("--policy", type=Path, default=DEFAULT_POLICY_PATH)
     parser.add_argument("--service-key", default=None, help="NGC service key with NRAS access (optional)")
+    parser.add_argument(
+        "--nonce",
+        default=None,
+        help="hex content-binding nonce, e.g. the claim_sha256 printed by proof.bundle",
+    )
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
 
-    result = attest_gpu(environment=args.environment, policy_path=args.policy, service_key=args.service_key)
+    result = attest_gpu(
+        environment=args.environment, policy_path=args.policy, service_key=args.service_key, nonce=args.nonce
+    )
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(

@@ -1,9 +1,10 @@
+import hashlib
 import json
 
-from proof.bundle import build_bundle
+from proof.bundle import build_bundle, checkpoint_manifest, claim_sha256
 
 
-def test_build_bundle_copies_checkpoint_and_scores(tmp_path):
+def test_build_bundle_is_proof_only_by_default(tmp_path):
     checkpoint_dir = tmp_path / "checkpoint"
     checkpoint_dir.mkdir()
     (checkpoint_dir / "adapter_model.bin").write_text("fake-weights")
@@ -15,12 +16,51 @@ def test_build_bundle_copies_checkpoint_and_scores(tmp_path):
     bundle = build_bundle(checkpoint_dir, scores_path, out_dir, run_id="run-001", base_model="Qwen/Qwen3.5-4B")
 
     assert bundle.run_id == "run-001"
-    assert (out_dir / "checkpoint" / "adapter_model.bin").read_text() == "fake-weights"
-    assert json.loads((out_dir / "eval_scores.json").read_text())["scores"] == {"gsm8k": 0.88}
+    # No weights in the bundle — only the per-file hash manifest of the checkpoint.
+    assert not (out_dir / "checkpoint").exists()
     manifest = json.loads((out_dir / "manifest.json").read_text())
+    expected_sha = hashlib.sha256(b"fake-weights").hexdigest()
+    assert manifest["checkpoint_manifest"] == {"adapter_model.bin": expected_sha}
+    assert json.loads((out_dir / "eval_scores.json").read_text())["scores"] == {"gsm8k": 0.88}
     assert manifest["run_id"] == "run-001"
     assert manifest["base_model"] == "Qwen/Qwen3.5-4B"
     assert "train_hours" not in manifest
+    assert bundle.claim_sha256 == claim_sha256(out_dir)
+
+
+def test_build_bundle_include_checkpoint_restores_legacy_copy(tmp_path):
+    checkpoint_dir = tmp_path / "checkpoint"
+    checkpoint_dir.mkdir()
+    (checkpoint_dir / "adapter_model.bin").write_text("fake-weights")
+    scores_path = tmp_path / "candidate.json"
+    scores_path.write_text(json.dumps({"scores": {"gsm8k": 0.88}}))
+
+    out_dir = tmp_path / "bundle"
+    build_bundle(
+        checkpoint_dir, scores_path, out_dir, run_id="run-001", base_model="Qwen/Qwen3.5-4B", include_checkpoint=True
+    )
+    assert (out_dir / "checkpoint" / "adapter_model.bin").read_text() == "fake-weights"
+
+
+def test_checkpoint_manifest_covers_nested_files(tmp_path):
+    checkpoint_dir = tmp_path / "ckpt"
+    (checkpoint_dir / "sub").mkdir(parents=True)
+    (checkpoint_dir / "a.safetensors").write_text("aa")
+    (checkpoint_dir / "sub" / "b.json").write_text("bb")
+    manifest = checkpoint_manifest(checkpoint_dir)
+    assert sorted(manifest) == ["a.safetensors", "sub/b.json"]
+
+
+def test_claim_sha256_changes_when_scores_change(tmp_path):
+    checkpoint_dir = tmp_path / "checkpoint"
+    checkpoint_dir.mkdir()
+    (checkpoint_dir / "w.bin").write_text("w")
+    scores_path = tmp_path / "candidate.json"
+    scores_path.write_text(json.dumps({"scores": {"gsm8k": 0.88}}))
+
+    bundle = build_bundle(checkpoint_dir, scores_path, tmp_path / "b1", run_id="r", base_model="m")
+    (tmp_path / "b1" / "eval_scores.json").write_text(json.dumps({"scores": {"gsm8k": 0.99}}))
+    assert claim_sha256(tmp_path / "b1") != bundle.claim_sha256
 
 
 def test_build_bundle_records_training_claims(tmp_path):

@@ -74,3 +74,51 @@ def test_training_claims_attestation_must_corroborate_gpu():
 
     corroborating = {"passed": True, "claims": {"hwmodel": "GB202 RTX PRO 6000"}}
     assert check_training_claims(manifest, corroborating) == []
+
+
+def test_proof_only_bundle_requires_local_checkpoint(tmp_path):
+    import json
+
+    from eval.verify import verify_submission
+
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    (bundle / "manifest.json").write_text(json.dumps({"run_id": "r1"}))
+    (bundle / "eval_scores.json").write_text(json.dumps({"scores": {"gsm8k": 0.6}}))
+
+    report = verify_submission(bundle, frontier={"gsm8k": 0.5})
+    assert report["verified"] is False
+    assert report["reason"] == "checkpoint_required"
+
+
+def test_claim_binding_matches_bound_nonce(tmp_path):
+    import json
+
+    from eval.verify import check_claim_binding
+    from proof.bundle import claim_sha256
+
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    (bundle / "manifest.json").write_text(json.dumps({"run_id": "r1"}))
+    (bundle / "eval_scores.json").write_text(json.dumps({"scores": {"gsm8k": 0.6}}))
+    digest = claim_sha256(bundle)
+
+    bound = {"passed": True, "claims": {"eat_nonce": digest.upper()}}
+    unbound = {"passed": True, "claims": {"eat_nonce": "ab" * 32}}
+    assert check_claim_binding(bundle, bound) is True
+    assert check_claim_binding(bundle, unbound) is False
+    assert check_claim_binding(bundle, None) is None
+
+
+def test_checkpoint_manifest_match_and_mismatch(tmp_path):
+    from eval.verify import check_checkpoint_manifest
+    from proof.bundle import checkpoint_manifest
+
+    ckpt = tmp_path / "ckpt"
+    ckpt.mkdir()
+    (ckpt / "w.bin").write_text("weights")
+    manifest = {"checkpoint_manifest": checkpoint_manifest(ckpt)}
+    assert check_checkpoint_manifest(manifest, ckpt) is True
+    (ckpt / "w.bin").write_text("tampered")
+    assert check_checkpoint_manifest(manifest, ckpt) is False
+    assert check_checkpoint_manifest({}, ckpt) is None

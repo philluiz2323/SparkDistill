@@ -1,10 +1,17 @@
-"""Assemble a proof-of-training bundle: checkpoint + eval scores, ready to publish
-to Hugging Face as the artifact a PR's proof link points to.
+"""Assemble a proof-of-training bundle: the claim, not the weights.
 
-Per the project's proof-bundle scope, the bundle holds only the checkpoint and its
-eval scores — no training-provenance metadata and no attestation report inside the
-bundle itself. (An attestation result, if collected, belongs in the PR's ledger entry
-via `eval.ledger`, not in the published bundle.)
+A bundle holds the eval scores, the training claims, and a per-file sha256
+manifest of the checkpoint — NOT the checkpoint itself. Trained weights are
+never the artifact of a submission (see README): the validator reproduces the
+checkpoint locally from the recipe + dataset and verifies against the recorded
+hashes and scores, instead of downloading multi-GB weights from Hugging Face.
+Pass `--include-checkpoint` only for legacy full-weight bundles.
+
+The printed `claim_sha256` binds the whole claim: pass it as the attestation
+nonce (`python -m eval.attestation --nonce <claim_sha256>`) so the NRAS-signed
+EAT cryptographically commits this exact bundle to the attested GPU. An
+attestation result belongs in the PR's `runs/<run-id>/` record via
+`eval.ledger`, not inside the published bundle.
 
     python -m proof.bundle --checkpoint outputs/qwen3.5-4b-phase1 --scores eval/results/candidate.json --run-id 2026-07-09-qwen3.5-4b-001 --out proof/_bundles/2026-07-09-qwen3.5-4b-001
 """
@@ -12,6 +19,7 @@ via `eval.ledger`, not in the published bundle.)
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import shutil
 import sys
@@ -28,6 +36,29 @@ class ProofBundle:
     bundle_dir: Path
     base_model: str
     created_at: str
+    claim_sha256: str = ""
+
+
+def checkpoint_manifest(checkpoint_dir: Path) -> dict[str, str]:
+    """Per-file sha256 of a checkpoint directory (relative path -> digest)."""
+    return {
+        path.relative_to(checkpoint_dir).as_posix(): _sha256_file(path)
+        for path in sorted(checkpoint_dir.rglob("*"))
+        if path.is_file()
+    }
+
+
+def claim_sha256(bundle_dir: Path) -> str:
+    """Digest binding the bundle's claim files — used as the attestation nonce.
+
+    Covers eval_scores.json and manifest.json byte-for-byte, so neither the
+    scores nor the training claims / checkpoint hashes can change after the
+    GPU attests this value.
+    """
+    digest = hashlib.sha256()
+    for name in ("eval_scores.json", "manifest.json"):
+        digest.update(_sha256_file(bundle_dir / name).encode())
+    return digest.hexdigest()
 
 
 def build_bundle(
@@ -40,22 +71,28 @@ def build_bundle(
     train_gpu: str | None = None,
     dataset_url: str | None = None,
     mix_manifest: Path | None = None,
+    include_checkpoint: bool = False,
 ) -> ProofBundle:
-    """Copy `checkpoint_dir`'s files and `scores_path`'s scores into `out_dir`.
+    """Record `checkpoint_dir`'s hashes and `scores_path`'s scores into `out_dir`.
 
-    `out_dir` is created fresh; call with an out_dir that doesn't already hold an
-    unrelated bundle. `train_hours`/`train_gpu`/`dataset_url` are the training-track
-    claims (see docs/miner-guide.md); `eval.verify` enforces the wall-clock budget
-    and GPU requirement against them.
+    The checkpoint itself stays local: the manifest carries a per-file sha256
+    manifest so a validator's locally reproduced checkpoint can be compared,
+    without anyone shipping weights. `include_checkpoint=True` restores the
+    legacy full-weight copy. `out_dir` is created fresh; call with an out_dir
+    that doesn't already hold an unrelated bundle. `train_hours`/`train_gpu`/
+    `dataset_url` are the training-track claims (see docs/miner-guide.md);
+    `eval.verify` enforces the wall-clock budget and GPU requirement against them.
     """
     out_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(checkpoint_dir, out_dir / "checkpoint", dirs_exist_ok=True)
+    if include_checkpoint:
+        shutil.copytree(checkpoint_dir, out_dir / "checkpoint", dirs_exist_ok=True)
 
     scores = json.loads(scores_path.read_text())
     (out_dir / "eval_scores.json").write_text(json.dumps(scores, indent=2))
 
     created_at = datetime.now(UTC).isoformat()
     manifest: dict = {"run_id": run_id, "base_model": base_model, "created_at": created_at}
+    manifest["checkpoint_manifest"] = checkpoint_manifest(checkpoint_dir)
     if train_hours is not None:
         manifest["train_hours"] = train_hours
     if train_gpu is not None:
@@ -73,7 +110,13 @@ def build_bundle(
         manifest["mix_component_count"] = len(mix_data.get("components") or [])
     (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2))
 
-    return ProofBundle(run_id=run_id, bundle_dir=out_dir, base_model=base_model, created_at=created_at)
+    return ProofBundle(
+        run_id=run_id,
+        bundle_dir=out_dir,
+        base_model=base_model,
+        created_at=created_at,
+        claim_sha256=claim_sha256(out_dir),
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -91,6 +134,11 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="committed mix_manifest.json from eval.mix_registry (cross-miner training mix)",
     )
+    parser.add_argument(
+        "--include-checkpoint",
+        action="store_true",
+        help="legacy: also copy the full checkpoint weights into the bundle",
+    )
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
 
@@ -104,8 +152,10 @@ def main(argv: list[str] | None = None) -> int:
         train_gpu=args.train_gpu,
         dataset_url=args.dataset_url,
         mix_manifest=args.mix_manifest,
+        include_checkpoint=args.include_checkpoint,
     )
     print(f"wrote proof bundle {bundle.run_id} to {bundle.bundle_dir}", file=sys.stderr)
+    print(f"claim_sha256 (use as attestation nonce): {bundle.claim_sha256}", file=sys.stderr)
     return 0
 
 

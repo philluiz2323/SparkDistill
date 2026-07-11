@@ -8,5 +8,5 @@ gpu_target: "Blackwell-SM120"
 triton_version: "3.7.1"
 output_dir: "./results/quick"
 max_tokens: 3072
-temperature: 0.2
+temperature: 0.0
 gpu_index: 0

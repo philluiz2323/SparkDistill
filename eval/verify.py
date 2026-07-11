@@ -120,6 +120,37 @@ def _no_student_endpoint_env():
             os.environ["SPARKDISTILL_STUDENT_ENDPOINT"] = saved
 
 
+def check_claim_binding(bundle_dir: Path, attestation: dict | None) -> bool | None:
+    """Whether the attestation's `eat_nonce` commits to this exact bundle.
+
+    Returns True when the NRAS-signed nonce equals the bundle's `claim_sha256`
+    (see `proof.bundle`), False when an attestation is present but unbound
+    (legacy random-nonce attestations), and None when there is no attestation.
+    """
+    if attestation is None:
+        return None
+    from proof.bundle import claim_sha256
+
+    eat_nonce = str((attestation.get("claims") or {}).get("eat_nonce") or "")
+    return eat_nonce.lower().removeprefix("0x") == claim_sha256(bundle_dir)
+
+
+def check_checkpoint_manifest(manifest: dict, checkpoint_path: Path) -> bool | None:
+    """Compare a local checkpoint against the bundle's per-file sha256 manifest.
+
+    Returns None when the bundle predates checkpoint manifests. A mismatch on a
+    locally reproduced checkpoint is informational (bit-identical retrains are
+    not guaranteed across driver/stack revisions) — the score re-run stays the
+    decisive check.
+    """
+    expected = manifest.get("checkpoint_manifest")
+    if not expected:
+        return None
+    from proof.bundle import checkpoint_manifest
+
+    return checkpoint_manifest(checkpoint_path) == expected
+
+
 def verify_submission(
     bundle_dir: Path,
     frontier: dict[str, float],
@@ -128,10 +159,27 @@ def verify_submission(
     attestation: dict | None = None,
     *,
     registry_path: Path = REGISTRY_PATH,
+    checkpoint: Path | None = None,
 ) -> dict:
     manifest = json.loads((bundle_dir / "manifest.json").read_text())
     claimed = json.loads((bundle_dir / "eval_scores.json").read_text())["scores"]
+
+    # Proof-only bundles carry no weights: the validator reproduces the checkpoint
+    # locally (recipe + dataset, see docs/miner-guide.md) and passes it here.
     checkpoint_path = bundle_dir / "checkpoint"
+    if not checkpoint_path.is_dir():
+        if checkpoint is None:
+            return {
+                "verified": False,
+                "reason": "checkpoint_required",
+                "issues": [
+                    "proof-only bundle: reproduce the checkpoint from the recipe + dataset "
+                    "and pass it via --checkpoint"
+                ],
+                "label": "eval:REJECT",
+                "run_id": manifest.get("run_id"),
+            }
+        checkpoint_path = checkpoint
 
     if attestation is not None and not attestation.get("passed"):
         return {"verified": False, "reason": "attestation_failed", "label": "eval:REJECT", "run_id": manifest.get("run_id")}
@@ -175,6 +223,11 @@ def verify_submission(
     report["verified"] = True
     report["reason"] = None
     report["run_id"] = manifest.get("run_id")
+    # Informational trust signals: claim_bound distinguishes an attestation that
+    # cryptographically commits to this bundle from a legacy unbound one, and
+    # checkpoint_hash_match records local-reproduction fidelity.
+    report["claim_bound"] = check_claim_binding(bundle_dir, attestation)
+    report["checkpoint_hash_match"] = check_checkpoint_manifest(manifest, checkpoint_path)
     return report
 
 
@@ -196,6 +249,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--attestation", type=Path, default=None, help="attestation json from eval.attestation")
     parser.add_argument("--limit", type=int, default=20, help="examples per benchmark for the cheap re-run")
     parser.add_argument("--tolerance-pct", type=float, default=2.0)
+    parser.add_argument(
+        "--checkpoint",
+        type=Path,
+        default=None,
+        help="locally reproduced checkpoint dir, required for proof-only bundles (no weights on HF)",
+    )
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
 
@@ -203,7 +262,14 @@ def main(argv: list[str] | None = None) -> int:
     frontier = json.loads(args.frontier.read_text())["scores"]
     attestation = json.loads(args.attestation.read_text()) if args.attestation else None
 
-    report = verify_submission(bundle_dir, frontier, limit=args.limit, tolerance_pct=args.tolerance_pct, attestation=attestation)
+    report = verify_submission(
+        bundle_dir,
+        frontier,
+        limit=args.limit,
+        tolerance_pct=args.tolerance_pct,
+        attestation=attestation,
+        checkpoint=args.checkpoint,
+    )
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(json.dumps(report, indent=2))
