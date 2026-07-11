@@ -79,16 +79,43 @@ def attest_gpu(
 
 
 def _decode_overall_claims(token: str) -> dict:
-    """Best-effort, unverified decode of the EAT's overall JWT for display.
+    """Best-effort, unverified decode of the EAT's claims for display.
 
     Not the trust boundary — `validate_token` above (which checks signatures against
     the appraisal policy) is what actually decides `passed`.
+
+    Besides the overall JWT, per-device submodule tokens are decoded under a
+    `devices` key: they carry the hardware identity (`hwmodel`, driver/vbios
+    versions) that `eval.verify.check_training_claims` corroborates the claimed
+    training GPU against — the overall JWT alone has no hardware fields.
     """
     import jwt  # PyJWT, a transitive dep of nv-attestation-sdk
 
+    def _decode(encoded: str) -> dict:
+        return jwt.decode(encoded, options={"verify_signature": False})
+
     try:
-        overall_jwt = json.loads(token)[0][1]
-        return jwt.decode(overall_jwt, options={"verify_signature": False})
+        parsed = json.loads(token)
+        claims = _decode(parsed[0][1])
+        devices: dict = {}
+        for section in parsed[1:]:
+            if not isinstance(section, dict):
+                continue
+            # e.g. {"REMOTE_GPU_CLAIMS": [["JWT", <platform>], {"GPU-0": <jwt>, ...}]}
+            for entries in section.values():
+                if not isinstance(entries, list):
+                    continue
+                for entry in entries:
+                    if not isinstance(entry, dict):
+                        continue
+                    for device, device_jwt in entry.items():
+                        try:
+                            devices[device] = _decode(device_jwt)
+                        except Exception:
+                            continue
+        if devices:
+            claims["devices"] = devices
+        return claims
     except Exception:
         return {}
 
