@@ -534,6 +534,32 @@ def main(argv: list[str] | None = None) -> int:
             return 1
         print(f"merged PR #{args.pr_number}", file=sys.stderr)
 
+        from eval.update_canonical_pin import commit_canonical_pin_to_main
+
+        fetch = subprocess.run(
+            ["git", "fetch", "origin", "main"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if fetch.returncode != 0:
+            print(fetch.stderr or fetch.stdout, file=sys.stderr)
+            return 1
+        checkout = subprocess.run(
+            ["git", "checkout", "-B", "main", "origin/main"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if checkout.returncode != 0:
+            print(checkout.stderr or checkout.stdout, file=sys.stderr)
+            return 1
+        pin_issues = commit_canonical_pin_to_main(hf_token=os.environ.get("HF_TOKEN"))
+        if pin_issues:
+            for issue in pin_issues:
+                print(f"  - {issue}", file=sys.stderr)
+            return 1
+
     # Proof-verified submissions below the merge threshold (`dataset:none`) still
     # succeed CI; the workflow closes them when --close-on-reject is set.
     proof_verified = bool(

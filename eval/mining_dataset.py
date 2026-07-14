@@ -18,10 +18,25 @@ from eval.mix_registry import mix_registry_datasets, verify_mix_manifest
 
 DEFAULT_MINING_DATASET_REPO = "gittensor-model-hub/sparkproof-mining"
 MINING_MANIFEST_PATH = "mix_manifest.json"
+DEFAULT_MINING_DEDUPE = "exact"
 
 
 def mining_dataset_repo() -> str:
     return os.environ.get("SPARKDISTILL_MINING_DATASET_REPO", DEFAULT_MINING_DATASET_REPO).strip()
+
+
+def mining_dedupe_mode() -> str:
+    """Cross-miner dedupe when building sparkproof-mining.
+
+    ``exact`` keeps near-duplicate rows (only identical prompts are dropped).
+    ``near`` also drops structurally similar rows and can remove most of a large
+    submission when mixed with an earlier registry line. Override with
+    ``SPARKDISTILL_MINING_DEDUPE`` (``exact``, ``near``, or ``none``).
+    """
+    value = os.environ.get("SPARKDISTILL_MINING_DEDUPE", DEFAULT_MINING_DEDUPE).strip().lower()
+    if value not in {"exact", "near", "none"}:
+        return DEFAULT_MINING_DEDUPE
+    return value
 
 
 def publish_sft_dataset(
@@ -77,7 +92,7 @@ def aggregate_and_publish_mining_dataset(
     repo_id: str,
     sparkproof_root: Path | None = None,
     work_dir: Path | None = None,
-    dedupe: str = "near",
+    dedupe: str | None = None,
     download_proof: Callable[[str, Path | None], Path] | None = None,
     publish_fn: Callable[..., dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
@@ -103,7 +118,7 @@ def aggregate_and_publish_mining_dataset(
             manifest_path=manifest_path,
             mix_id=f"mining-{repo_id.replace('/', '-')}",
             sparkproof_root=sparkproof_root,
-            dedupe=dedupe,  # type: ignore[arg-type]
+            dedupe=(dedupe or mining_dedupe_mode()),  # type: ignore[arg-type]
             download_proof=download_proof,
         )
         verify_report = verify_mix_manifest(manifest_path, sft_path=sft_path, registry_path=registry_path)

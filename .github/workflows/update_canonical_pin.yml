@@ -5,6 +5,7 @@ on:
     branches: [main]
     paths:
       - datasets/registry.jsonl
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -16,7 +17,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - uses: astral-sh/setup-uv@v6
         with:
@@ -31,6 +34,8 @@ jobs:
         run: scripts/update_canonical_pin.sh
 
       - name: Commit pin update
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if git diff --quiet datasets/canonical.json; then
             echo "canonical pin already up to date"
@@ -39,9 +44,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add datasets/canonical.json
-          git commit -m "$(cat <<'EOF'
-Refresh canonical mining dataset pin after registry update.
-
-EOF
-)"
-          git push
+          git commit -m "Refresh canonical mining dataset pin after registry update."
+          git push origin HEAD:main

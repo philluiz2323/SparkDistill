@@ -75,9 +75,19 @@ def test_training_claims_over_budget_fail():
 
 
 def test_training_claims_wrong_gpu_fail():
-    manifest = {"train_hours": 3.0, "train_gpu": "NVIDIA H100"}
+    manifest = {"train_hours": 3.0, "train_gpu": "NVIDIA A100"}
     issues = check_training_claims(manifest, None)
-    assert any("RTX PRO 6000" in issue for issue in issues)
+    assert any("accepted training GPU" in issue for issue in issues)
+
+
+def test_training_claims_h100_pass():
+    manifest = {"train_hours": 3.0, "train_gpu": "NVIDIA H100"}
+    assert check_training_claims(manifest, None) == []
+
+
+def test_training_claims_b200_pass():
+    manifest = {"train_hours": 3.0, "train_gpu": "NVIDIA B200"}
+    assert check_training_claims(manifest, None) == []
 
 
 def test_training_claims_absent_fields_do_not_fail():
@@ -93,6 +103,10 @@ def test_training_claims_attestation_must_corroborate_gpu():
 
     corroborating = {"passed": True, "claims": {"hwmodel": "GB202 RTX PRO 6000"}}
     assert check_training_claims(manifest, corroborating) == []
+
+    h100_manifest = {"train_hours": 3.0, "train_gpu": "NVIDIA H100"}
+    h100_attestation = {"passed": True, "claims": {"hwmodel": "NVIDIA H100 SXM"}}
+    assert check_training_claims(h100_manifest, h100_attestation) == []
 
 
 def test_proof_only_bundle_requires_local_checkpoint(tmp_path):

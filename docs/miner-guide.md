@@ -387,7 +387,8 @@ status against live Intel PCS collateral — `"UpToDate"` with no advisories is
 the clean pass.
 
 Training-track claims are enforced too: `--train-hours` beyond the **5-hour wall-clock
-budget** is `eval:REJECT`, `--train-gpu` must be an **RTX PRO 6000** CC node, and when
+budget** is `eval:REJECT`, `--train-gpu` must be an accepted CC node (**RTX PRO 6000
+Blackwell**, **B200/B300**, or **H100/H200**), and when attestation is included the
 you attach a CC attestation, its attested hardware model must corroborate the claimed
 GPU (a mismatched attestation is worse than none). The attestation itself is
 authenticated end-to-end: the validator verifies the NRAS-signed GPU tokens against

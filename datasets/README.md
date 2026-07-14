@@ -89,9 +89,14 @@ Before a registry PR merges, CI:
 3. Publishes the union to the mining dataset repo (`train` split + `mix_manifest.json`)
 4. Merges the PR only if publish succeeds
 
-On `main`, `.github/workflows/update_canonical_pin.yml` refreshes `canonical.json` from
-Hugging Face so local `scripts/prepare_mining_sft.sh` and training-track CI share the same
-pin.
+Registry aggregation uses `SPARKDISTILL_MINING_DEDUPE` when republishing sparkproof-mining
+(default **`exact`**: drop only identical prompts; keep near-duplicate rows). The older
+`near` mode also dropped structurally similar rows and could shrink large submissions
+when mixed with earlier registry lines. Set `SPARKDISTILL_MINING_DEDUPE=none` only for
+local debugging.
+
+After each eligible registry merge, CI refreshes [`canonical.json`](canonical.json) from
+the live HF `mix_manifest.json` (also triggered by `.github/workflows/update_canonical_pin.yml`).
 
 **Training-track rule:** recipes must use `data/processed/sparkproof-mining_sft.jsonl`
 only. Prepare with `scripts/prepare_mining_sft.sh` (verifies HF matches `canonical.json` and

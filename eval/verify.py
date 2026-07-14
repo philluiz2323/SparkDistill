@@ -28,18 +28,21 @@ from eval.dataset_verify import _sha256_file
 from eval.harness import run_harness
 from eval.mix_registry import REGISTRY_PATH, verify_mix_manifest
 from eval.score import score
+from eval.training_gpus import (
+    accepted_training_gpu_label,
+    attestation_corroborates_training_gpu,
+    is_accepted_training_gpu,
+)
 
 # Training-track budget (see docs/miner-guide.md): a proof-of-training claim must have
-# been produced within this wall-clock budget on the required CC GPU.
+# been produced within this wall-clock budget on an accepted CC GPU.
 MAX_TRAIN_HOURS = 5.0
-REQUIRED_TRAIN_GPU = "RTX PRO 6000"
 
 
 def check_training_claims(
     manifest: dict,
     attestation: dict | None,
     max_train_hours: float = MAX_TRAIN_HOURS,
-    required_gpu: str = REQUIRED_TRAIN_GPU,
 ) -> list[str]:
     """Validate the bundle's training-track claims (train_hours / train_gpu).
 
@@ -52,15 +55,14 @@ def check_training_claims(
         issues.append(f"train_hours {train_hours} exceeds the {max_train_hours}h budget")
 
     train_gpu = manifest.get("train_gpu")
-    if train_gpu is not None and required_gpu.lower() not in str(train_gpu).lower():
-        issues.append(f"train_gpu {train_gpu!r} is not a {required_gpu} CC node")
+    if train_gpu is not None and not is_accepted_training_gpu(str(train_gpu)):
+        issues.append(
+            f"train_gpu {train_gpu!r} is not an accepted training GPU "
+            f"({accepted_training_gpu_label()})"
+        )
 
-    # When CC attestation is provided, the attested hardware model must corroborate
-    # the claimed GPU — the claim alone is just text.
-    if attestation and train_gpu is not None:
-        claims_blob = json.dumps(attestation.get("claims") or {}).lower()
-        if claims_blob != "{}" and "pro 6000" not in claims_blob and "gb20" not in claims_blob:
-            issues.append("attestation claims do not corroborate the claimed RTX PRO 6000 GPU")
+    if train_gpu is not None and not attestation_corroborates_training_gpu(str(train_gpu), attestation):
+        issues.append("attestation claims do not corroborate the claimed training GPU")
     return issues
 
 

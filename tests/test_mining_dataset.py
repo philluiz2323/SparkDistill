@@ -15,6 +15,14 @@ def test_mining_dataset_repo_default():
     assert mining_dataset_repo() == DEFAULT_MINING_DATASET_REPO
 
 
+def test_mining_dedupe_mode_defaults_to_exact(monkeypatch):
+    monkeypatch.delenv("SPARKDISTILL_MINING_DEDUPE", raising=False)
+    from eval.mining_dataset import DEFAULT_MINING_DEDUPE, mining_dedupe_mode
+
+    assert DEFAULT_MINING_DEDUPE == "exact"
+    assert mining_dedupe_mode() == "exact"
+
+
 def test_aggregate_registry_text_dedupes_by_sha():
     base = json.dumps(_registry_entry("alice", "a" * 64)) + "\n"
     head = base + json.dumps(_registry_entry("bob", "b" * 64)) + "\n"
