@@ -30,11 +30,11 @@ from eval.canonical_dataset import (
 )
 
 _TRAINING_TRACK_CHECKBOX_RE = re.compile(
-    r"^\s*-\s*\[[xX]\]\s+\*\*Training/evaluation improvement\*\*\s*$",
+    r"^\s*-\s*\[[xX]\]\s+\*{0,2}Training/evaluation improvement\*{0,2}\s*$",
     re.MULTILINE,
 )
 _DATASET_TRACK_CHECKBOX_RE = re.compile(
-    r"^\s*-\s*\[[xX]\]\s+\*\*Dataset track submission\*\*\s*$",
+    r"^\s*-\s*\[[xX]\]\s+\*{0,2}Dataset track submission\*{0,2}\s*$",
     re.MULTILINE,
 )
 _CANONICAL_SHA_IN_BODY_RE = re.compile(r"`([0-9a-f]{64})`")
@@ -177,7 +177,7 @@ def gate_training_pr(
 
     issues: list[str] = []
     if pr_body is not None and not is_training_track_pr(pr_body):
-        issues.append("check '**Training/evaluation improvement**' in the pull request template")
+        issues.append("check 'Training/evaluation improvement' in the pull request template")
     issues.extend(validate_changed_paths(changed_paths))
 
     recipe_paths = sorted({path for path in (changed_paths or []) if path.startswith("recipes/")})

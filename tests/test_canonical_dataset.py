@@ -34,7 +34,9 @@ def test_recipe_rejects_non_canonical_paths():
 
 def test_training_track_checkbox():
     assert is_training_track_pr("- [x] **Training/evaluation improvement**")
+    assert is_training_track_pr("- [x] Training/evaluation improvement")
     assert not is_training_track_pr("- [x] **Dataset track submission**")
+    assert not is_training_track_pr("- [x] Dataset track submission")
 
 
 def test_forbidden_training_paths():

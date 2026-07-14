@@ -22,7 +22,7 @@ REGISTRY_PATH = Path("datasets/registry.jsonl")
 REQUIRED_FIELDS = ("miner", "hf_url", "trajectories_sha256", "rows_total", "dataset_version")
 _HF_REPO_RE = re.compile(r"^https://huggingface\.co/datasets/([^/]+/[^/#?]+)")
 _DATASET_TRACK_CHECKBOX_RE = re.compile(
-    r"^\s*-\s*\[[xX]\]\s+\*\*Dataset track submission\*\*\s*$",
+    r"^\s*-\s*\[[xX]\]\s+\*{0,2}Dataset track submission\*{0,2}\s*$",
     re.MULTILINE,
 )
 DATASET_LABELS = REWARDED_DATASET_LABELS | frozenset({"dataset:none", "dataset:REJECT"})
@@ -302,7 +302,7 @@ def gate_registry_pr(
     preflight_issues.extend(validate_append_only_registry(base_registry_text, head_registry_text))
     if pr_body is not None and not is_dataset_track_pr(pr_body):
         preflight_issues.append(
-            "check '**Dataset track submission**' in the pull request template"
+            "check 'Dataset track submission' in the pull request template"
         )
     if preflight_issues:
         return {

@@ -41,7 +41,10 @@ def test_parse_added_registry_lines():
 def test_dataset_track_checkbox_must_be_checked():
     assert is_dataset_track_pr("- [x] **Dataset track submission**")
     assert is_dataset_track_pr("- [X] **Dataset track submission**")
+    assert is_dataset_track_pr("- [x] Dataset track submission")
+    assert is_dataset_track_pr("- [X] Dataset track submission")
     assert not is_dataset_track_pr("- [ ] **Dataset track submission**")
+    assert not is_dataset_track_pr("- [ ] Dataset track submission")
     assert not is_dataset_track_pr("- [x] **Training/evaluation improvement**")
 
 
