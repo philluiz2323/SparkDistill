@@ -93,3 +93,25 @@ def test_missing_artifact_rejects(tmp_path):
     report = verify_dataset_submission(proof, sparkproof_root=None)
     assert report["label"] == "dataset:REJECT"
     assert any("missing proof artifact" in issue for issue in report["issues"])
+
+
+def test_sparkproof_verify_runs_online_trust_anchors(monkeypatch, tmp_path):
+    # Without --online, sparkproof-verify never checks the NRAS signature and the
+    # gate would accept a hand-written gpu_attestation.json.
+    import eval.dataset_verify as dv
+
+    captured = {}
+
+    class Result:
+        returncode = 0
+        stdout = "{\"verified\": true}"
+        stderr = ""
+
+    def fake_run(cmd, cwd=None, capture_output=None, text=None, timeout=None):
+        captured["cmd"] = cmd
+        return Result()
+
+    monkeypatch.setattr(dv.subprocess, "run", fake_run)
+    issues = dv.run_sparkproof_verify(tmp_path, tmp_path)
+    assert issues == []
+    assert "--online" in captured["cmd"]

@@ -114,8 +114,14 @@ def check_proof_dir(proof_dir: Path, claimed_sha256: str | None = None) -> tuple
 
 
 def run_sparkproof_verify(proof_dir: Path, sparkproof_root: Path, *, production: bool = True) -> list[str]:
-    """Re-run full SparkProof policy verification via the sibling SparkProof checkout."""
-    cmd = ["uv", "run", "sparkproof-verify", "--bundle", str(proof_dir)]
+    """Re-run full SparkProof policy verification via the sibling SparkProof checkout.
+
+    --online activates the cryptographic trust anchors: without it, the stored
+    NRAS attestation token's NVIDIA signature is never verified and the gate
+    would accept a hand-written gpu_attestation.json. Requires network access
+    to NVIDIA's JWKS (production gates run in CI, which has it).
+    """
+    cmd = ["uv", "run", "sparkproof-verify", "--bundle", str(proof_dir), "--online"]
     if not production:
         cmd.append("--dev")
     result = subprocess.run(
