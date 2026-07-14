@@ -156,3 +156,77 @@ def test_build_bundle_records_mix_manifest(tmp_path):
     assert manifest["mix_rows_total"] == 42
     assert manifest["mix_component_count"] == 1
     assert (bundle.bundle_dir / "mix_manifest.json").exists()
+
+
+def test_build_bundle_records_gsm8k_regression_sample(tmp_path):
+    checkpoint_dir = tmp_path / "checkpoint"
+    checkpoint_dir.mkdir()
+    (checkpoint_dir / "adapter_model.bin").write_text("fake-weights")
+
+    scores_path = tmp_path / "candidate.json"
+    scores_path.write_text(json.dumps({"scores": {"gsm8k": 0.60}}))
+
+    from eval.regression_sample import build_regression_sample, load_regression_problems
+
+    responses = [
+        {"problem_id": int(row["problem_id"]), "model_response": f"#### {row['answer']}"}
+        for row in load_regression_problems()
+    ]
+    sample_path = tmp_path / "gsm8k_regression_sample.json"
+    sample = build_regression_sample(responses)
+    sample_path.write_text(json.dumps(sample, indent=2))
+
+    out_dir = tmp_path / "bundle"
+    before = build_bundle(
+        checkpoint_dir,
+        scores_path,
+        out_dir,
+        run_id="run-gsm8k",
+        base_model="Qwen/Qwen3.5-4B",
+        gsm8k_regression_sample=sample_path,
+    )
+
+    manifest = json.loads((out_dir / "manifest.json").read_text())
+    assert manifest["gsm8k_regression_exact_match"] == sample["exact_match"]
+    assert (out_dir / "gsm8k_regression_sample.json").exists()
+
+    (out_dir / "gsm8k_regression_sample.json").write_text(json.dumps({**sample, "exact_match": 0.0}, indent=2))
+    assert claim_sha256(out_dir) != before.claim_sha256
+
+
+def test_build_bundle_records_attested_eval_samples(tmp_path):
+    checkpoint_dir = tmp_path / "checkpoint"
+    checkpoint_dir.mkdir()
+    (checkpoint_dir / "adapter_model.bin").write_text("fake-weights")
+
+    scores_path = tmp_path / "candidate.json"
+    scores_path.write_text(json.dumps({"scores": {"gsm8k": 0.60, "triton": 0.42}}))
+
+    from eval.attested_samples import ATTESTED_SAMPLES_FILENAME, build_attested_samples_document, build_triton_entry
+
+    triton_report = {
+        "summary": {"avg_composite": 0.42},
+        "details": [{"level": 1, "composite_score": 0.42}],
+    }
+    samples_path = tmp_path / "attested_eval_samples.json"
+    samples_path.write_text(
+        json.dumps(
+            build_attested_samples_document({"triton": build_triton_entry(triton_report)}),
+            indent=2,
+        )
+    )
+
+    out_dir = tmp_path / "bundle"
+    bundle = build_bundle(
+        checkpoint_dir,
+        scores_path,
+        out_dir,
+        run_id="run-attest",
+        base_model="Qwen/Qwen3.5-4B",
+        attested_eval_samples=samples_path,
+    )
+
+    manifest = json.loads((out_dir / "manifest.json").read_text())
+    assert manifest["attested_eval_benchmarks"] == ["triton"]
+    assert (out_dir / ATTESTED_SAMPLES_FILENAME).exists()
+    assert bundle.claim_sha256 == claim_sha256(out_dir)

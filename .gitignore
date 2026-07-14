@@ -19,6 +19,7 @@ data/processed/
 data/prepared/
 *.jsonl
 !data/prompts/*.jsonl
+!eval/data/gsm8k_regression_50.jsonl
 checkpoints/
 outputs/
 eval/results/

@@ -112,14 +112,17 @@ def test_training_claims_attestation_must_corroborate_gpu():
 def test_proof_only_bundle_requires_local_checkpoint(tmp_path):
     import json
 
+    from eval.canonical_dataset import canonical_hf_url
     from eval.verify import verify_submission
 
     bundle = tmp_path / "bundle"
     bundle.mkdir()
-    (bundle / "manifest.json").write_text(json.dumps({"run_id": "r1"}))
-    (bundle / "eval_scores.json").write_text(json.dumps({"scores": {"gsm8k": 0.6}}))
+    (bundle / "manifest.json").write_text(
+        json.dumps({"run_id": "r1", "dataset_url": canonical_hf_url()})
+    )
+    (bundle / "eval_scores.json").write_text(json.dumps({"scores": {"gsm8k": 0.6, "triton": 0.4}}))
 
-    report = verify_submission(bundle, frontier={"gsm8k": 0.5})
+    report = verify_submission(bundle, frontier={"gsm8k": 0.5, "triton": 0.3})
     assert report["verified"] is False
     assert report["reason"] == "checkpoint_required"
 
@@ -219,3 +222,70 @@ def test_gpu_signature_absent_without_token():
 
     assert check_gpu_signature(None) is None
     assert check_gpu_signature({"passed": True, "token": ""}) is None
+
+
+def test_attested_gsm8k_skips_harness_without_checkpoint(tmp_path, monkeypatch):
+    import json
+
+    import eval.verify as v
+    from eval.canonical_dataset import canonical_hf_url
+    from eval.regression_sample import REGRESSION_SAMPLE_FILENAME, build_regression_sample, load_regression_problems
+    from eval.attestation import tdx_report_data
+    from proof.bundle import claim_sha256
+
+    responses = [
+        {"problem_id": int(row["problem_id"]), "model_response": f"#### {row['answer']}"}
+        for row in load_regression_problems()
+    ]
+    sample = build_regression_sample(responses)
+
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    (bundle / "manifest.json").write_text(
+        json.dumps({"run_id": "r-attest", "dataset_url": canonical_hf_url()})
+    )
+    (bundle / "eval_scores.json").write_text(json.dumps({"scores": {"gsm8k": sample["exact_match"]}}))
+    (bundle / REGRESSION_SAMPLE_FILENAME).write_text(json.dumps(sample, indent=2))
+
+    digest = claim_sha256(bundle)
+    attestation = {
+        "passed": True,
+        "claims": {"eat_nonce": digest},
+        "tdx": {"report_data": tdx_report_data(digest).hex()},
+    }
+
+    def fail_harness(*_args, **_kwargs):
+        raise AssertionError("run_harness should not run for attested gsm8k-only bundles")
+
+    monkeypatch.setattr(v, "run_harness", fail_harness)
+
+    report = v.verify_submission(bundle, frontier={"gsm8k": 0.5}, attestation=attestation)
+    assert report["verified"] is True
+    assert report["attested_gsm8k_regression"] is True
+    assert report["claim_bound"] is True
+
+
+def test_attested_gsm8k_sample_without_attestation_fails(tmp_path):
+    import json
+
+    from eval.canonical_dataset import canonical_hf_url
+    from eval.regression_sample import REGRESSION_SAMPLE_FILENAME, build_regression_sample, load_regression_problems
+    from eval.verify import verify_submission
+
+    responses = [
+        {"problem_id": int(row["problem_id"]), "model_response": f"#### {row['answer']}"}
+        for row in load_regression_problems()
+    ]
+    sample = build_regression_sample(responses)
+
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    (bundle / "manifest.json").write_text(
+        json.dumps({"run_id": "r1", "dataset_url": canonical_hf_url()})
+    )
+    (bundle / "eval_scores.json").write_text(json.dumps({"scores": {"gsm8k": sample["exact_match"]}}))
+    (bundle / REGRESSION_SAMPLE_FILENAME).write_text(json.dumps(sample, indent=2))
+
+    report = verify_submission(bundle, frontier={"gsm8k": 0.5})
+    assert report["verified"] is False
+    assert report["reason"] == "attested_eval_samples_failed"

@@ -322,21 +322,26 @@ uv sync --extra proof
 # prepare canonical training data + mix_manifest.json for the proof bundle
 scripts/prepare_mining_sft.sh
 
-# 1. package the CLAIM into a bundle — eval scores + training claims + a per-file
-#    sha256 manifest of your checkpoint. The weights themselves are NOT uploaded:
-#    the validator reproduces your checkpoint locally from the recipe + dataset.
+# 1. export attested eval artifacts on your GPU CC + Intel TDX guest (cheap 50-example set)
+uv run python -m eval.export_attested_samples \
+    --checkpoint outputs/<your-checkpoint> \
+    --out eval/results/attested_eval_samples.json
+
+# 2. package the CLAIM into a bundle — eval scores + training claims + a per-file
+#    sha256 manifest of your checkpoint. The weights themselves are NOT uploaded.
+#    Include --attested-eval-samples so every claimed benchmark can verify on CPU.
 python -m proof.bundle --checkpoint outputs/<your-checkpoint> --scores eval/results/candidate.json \
     --run-id <run-id> --out proof/_bundles/<run-id> \
     --train-hours 4.2 --train-gpu "NVIDIA RTX PRO 6000 Blackwell" \
     --dataset-url https://huggingface.co/datasets/gittensor-model-hub/sparkproof-mining \
-    --mix-manifest data/processed/mix_manifest.json
+    --mix-manifest data/processed/mix_manifest.json \
+    --attested-eval-samples eval/results/attested_eval_samples.json
 # note the printed claim_sha256
 
-# 2. attest the GPU you trained/evaluated on, passing the claim_sha256 as the nonce
-#    so the NRAS-signed token cryptographically commits YOUR claim to YOUR GPU
+# 3. attest the GPU + measured TDX guest (nonce = claim_sha256; captures NRAS + TDX quote)
 python -m eval.attestation --nonce <claim_sha256> --out runs/<run-id>/attestation.json
 
-# 3. publish the (small, weights-free) bundle
+# 4. publish the (small, weights-free) bundle
 python -m proof.publish --bundle proof/_bundles/<run-id> --repo-id <your-hf-username>/sparkdistill-<run-id>
 ```
 
@@ -346,11 +351,15 @@ python -m proof.publish --bundle proof/_bundles/<run-id> --repo-id <your-hf-user
 keep them in `[0, 1]` or verification rejects the claim outright.
 
 Put the printed Hugging Face URL — and, if you ran it, your attestation.json — in your
-PR. The validator runs `eval.verify`: it reproduces your checkpoint locally from the
-recipe + dataset (`--checkpoint <local-dir>`), does a small held-out re-run of your
-claimed scores (not the full basket), and checks the attestation — including whether
-its `eat_nonce` matches the bundle's recomputed `claim_sha256` (`claim_bound` in the
-report). If your claim doesn't hold up within tolerance, the PR is rejected outright —
+PR. The validator runs `eval.verify`: when you include `--attested-eval-samples` and a
+**GPU CC + Intel TDX** attestation bound to `claim_sha256`, it re-checks every bundled
+benchmark artifact on CPU and **skips the harness re-run entirely** — no local
+checkpoint reproduction and no validator GPU (`attested_eval_benchmarks` in the
+report). Without attested samples (or without both GPU nonce binding and TDX
+`report_data` binding), the validator still reproduces your checkpoint locally and
+re-runs claimed benchmarks on GPU. The attestation is authenticated end-to-end:
+NVIDIA JWKS (`gpu_signature`) and Intel PCS (`tdx_signature`). If your claim doesn't
+hold up within tolerance, the PR is rejected outright —
 a proof bundle that misrepresents its scores is treated as worse than no bundle at
 all, not just "unverified."
 
@@ -399,7 +408,7 @@ makes the training result reproducible by anyone.
 
 | label | meaning |
 |---|---|
-| `proof:attested` | GPU CC attestation passed; cheap re-verification only |
+| `proof:attested` | GPU CC + TDX attestation passed; CPU re-check of bundled eval artifacts only |
 | `proof:unattested` | HF bundle submitted, no attestation; cheap re-verification only |
 | `proof:none` | no bundle submitted; full retrain-verification applies |
 

@@ -28,6 +28,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from eval.dataset_verify import _sha256_file
+from eval.attested_samples import ATTESTED_SAMPLES_FILENAME
+from eval.regression_sample import REGRESSION_SAMPLE_FILENAME
 
 
 @dataclass(frozen=True)
@@ -51,13 +53,14 @@ def checkpoint_manifest(checkpoint_dir: Path) -> dict[str, str]:
 def claim_sha256(bundle_dir: Path) -> str:
     """Digest binding the bundle's claim files — used as the attestation nonce.
 
-    Covers eval_scores.json and manifest.json byte-for-byte, so neither the
-    scores nor the training claims / checkpoint hashes can change after the
-    GPU attests this value.
+    Covers eval_scores.json, manifest.json, and attested eval sample files when
+    present, so attested artifacts cannot change after GPU + TDX attestation.
     """
     digest = hashlib.sha256()
-    for name in ("eval_scores.json", "manifest.json"):
-        digest.update(_sha256_file(bundle_dir / name).encode())
+    for name in ("eval_scores.json", "manifest.json", ATTESTED_SAMPLES_FILENAME, REGRESSION_SAMPLE_FILENAME):
+        path = bundle_dir / name
+        if path.exists():
+            digest.update(_sha256_file(path).encode())
     return digest.hexdigest()
 
 
@@ -71,6 +74,8 @@ def build_bundle(
     train_gpu: str | None = None,
     dataset_url: str | None = None,
     mix_manifest: Path | None = None,
+    attested_eval_samples: Path | None = None,
+    gsm8k_regression_sample: Path | None = None,
     include_checkpoint: bool = False,
 ) -> ProofBundle:
     """Record `checkpoint_dir`'s hashes and `scores_path`'s scores into `out_dir`.
@@ -124,6 +129,20 @@ def build_bundle(
         manifest["mix_id"] = mix_data.get("mix_id")
         manifest["mix_rows_total"] = mix_data.get("rows_total")
         manifest["mix_component_count"] = len(mix_data.get("components") or [])
+    if attested_eval_samples is not None:
+        if not attested_eval_samples.exists():
+            raise FileNotFoundError(attested_eval_samples)
+        shutil.copy(attested_eval_samples, out_dir / ATTESTED_SAMPLES_FILENAME)
+        manifest["attested_eval_samples_sha256"] = _sha256_file(out_dir / ATTESTED_SAMPLES_FILENAME)
+        sample_doc = json.loads(attested_eval_samples.read_text(encoding="utf-8"))
+        manifest["attested_eval_benchmarks"] = sorted((sample_doc.get("benchmarks") or {}).keys())
+    if gsm8k_regression_sample is not None:
+        if not gsm8k_regression_sample.exists():
+            raise FileNotFoundError(gsm8k_regression_sample)
+        shutil.copy(gsm8k_regression_sample, out_dir / REGRESSION_SAMPLE_FILENAME)
+        manifest["gsm8k_regression_sample_sha256"] = _sha256_file(out_dir / REGRESSION_SAMPLE_FILENAME)
+        sample_data = json.loads(gsm8k_regression_sample.read_text(encoding="utf-8"))
+        manifest["gsm8k_regression_exact_match"] = sample_data.get("exact_match")
     (out_dir / "manifest.json").write_text(json.dumps(manifest, indent=2))
 
     return ProofBundle(
@@ -151,6 +170,18 @@ def main(argv: list[str] | None = None) -> int:
         help="committed mix_manifest.json from eval.mix_registry (cross-miner training mix)",
     )
     parser.add_argument(
+        "--attested-eval-samples",
+        type=Path,
+        default=None,
+        help="attested eval artifacts from eval.export_attested_samples (GPU+TDX no-verify path)",
+    )
+    parser.add_argument(
+        "--gsm8k-regression-sample",
+        type=Path,
+        default=None,
+        help="legacy gsm8k-only sample from eval.export_gsm8k_regression_sample",
+    )
+    parser.add_argument(
         "--include-checkpoint",
         action="store_true",
         help="legacy: also copy the full checkpoint weights into the bundle",
@@ -168,6 +199,8 @@ def main(argv: list[str] | None = None) -> int:
         train_gpu=args.train_gpu,
         dataset_url=args.dataset_url,
         mix_manifest=args.mix_manifest,
+        attested_eval_samples=args.attested_eval_samples,
+        gsm8k_regression_sample=args.gsm8k_regression_sample,
         include_checkpoint=args.include_checkpoint,
     )
     print(f"wrote proof bundle {bundle.run_id} to {bundle.bundle_dir}", file=sys.stderr)

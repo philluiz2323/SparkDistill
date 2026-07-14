@@ -9,7 +9,7 @@ or stale claim and rejected outright — cheap verification does not re-run the 
 basket, so it must not silently trust an unverified number either.
 
     python -m eval.verify --bundle-repo <hf-repo-id> --frontier eval/results/frontier.json \\
-        [--attestation runs/<run-id>/attestation.json] --limit 20 --tolerance-pct 2.0 \\
+        [--attestation runs/<run-id>/attestation.json] --limit 50 --tolerance-pct 2.0 \\
         --out eval/results/report.json
 """
 
@@ -26,6 +26,12 @@ from eval.benchmarks import BENCHMARKS, assert_fraction_scores
 from eval.canonical_dataset import canonical_hf_url, canonical_sft_sha256
 from eval.dataset_verify import _sha256_file
 from eval.harness import run_harness
+from eval.attested_samples import (
+    ATTESTED_VERIFY_LIMIT,
+    has_attested_samples,
+    verify_attested_eval_samples,
+)
+from eval.regression_sample import REGRESSION_BENCHMARK_KEY
 from eval.mix_registry import REGISTRY_PATH, verify_mix_manifest
 from eval.score import score
 from eval.training_gpus import (
@@ -242,16 +248,14 @@ def check_tdx_signature(attestation: dict | None, pccs_url: str | None = None) -
     return verify_tdx_quote(attestation["tdx"].get("quote_b64") or "", pccs_url)
 
 
-def check_checkpoint_manifest(manifest: dict, checkpoint_path: Path) -> bool | None:
+def check_checkpoint_manifest(manifest: dict, checkpoint_path: Path | None) -> bool | None:
     """Compare a local checkpoint against the bundle's per-file sha256 manifest.
 
-    Returns None when the bundle predates checkpoint manifests. A mismatch on a
-    locally reproduced checkpoint is informational (bit-identical retrains are
-    not guaranteed across driver/stack revisions) — the score re-run stays the
-    decisive check.
+    Returns None when the bundle predates checkpoint manifests or no local
+    checkpoint was reproduced (attested GSM8K-only verification).
     """
     expected = manifest.get("checkpoint_manifest")
-    if not expected:
+    if not expected or checkpoint_path is None or not checkpoint_path.is_dir():
         return None
     from proof.bundle import checkpoint_manifest
 
@@ -261,7 +265,7 @@ def check_checkpoint_manifest(manifest: dict, checkpoint_path: Path) -> bool | N
 def verify_submission(
     bundle_dir: Path,
     frontier: dict[str, float] | None,
-    limit: int = 20,
+    limit: int = ATTESTED_VERIFY_LIMIT,
     tolerance_pct: float = 2.0,
     attestation: dict | None = None,
     *,
@@ -277,23 +281,6 @@ def verify_submission(
     """
     manifest = json.loads((bundle_dir / "manifest.json").read_text())
     claimed = json.loads((bundle_dir / "eval_scores.json").read_text())["scores"]
-
-    # Proof-only bundles carry no weights: the validator reproduces the checkpoint
-    # locally (recipe + dataset, see docs/miner-guide.md) and passes it here.
-    checkpoint_path = bundle_dir / "checkpoint"
-    if not checkpoint_path.is_dir():
-        if checkpoint is None:
-            return {
-                "verified": False,
-                "reason": "checkpoint_required",
-                "issues": [
-                    "proof-only bundle: reproduce the checkpoint from the recipe + dataset "
-                    "and pass it via --checkpoint"
-                ],
-                "label": "eval:REJECT",
-                "run_id": manifest.get("run_id"),
-            }
-        checkpoint_path = checkpoint
 
     if attestation is not None and not attestation.get("passed"):
         return {"verified": False, "reason": "attestation_failed", "label": "eval:REJECT", "run_id": manifest.get("run_id")}
@@ -328,20 +315,62 @@ def verify_submission(
             "run_id": manifest.get("run_id"),
         }
 
-    # Re-run only registered benchmarks — claimed score files may carry extra detail
-    # keys (e.g. eval.triton_bench's triton_* sub-metrics) that have no harness entry.
-    claimed_benchmarks = sorted(key for key in claimed if key in BENCHMARKS)
-    with _no_student_endpoint_env():
-        rerun = run_harness(str(checkpoint_path), claimed_benchmarks, Path("eval/results/_verify"), limit=limit)
-    mismatches = check_claim(claimed, rerun, tolerance_pct)
-    if mismatches:
+    attested_keys, attested_issues = verify_attested_eval_samples(
+        bundle_dir,
+        claimed,
+        frontier,
+        attestation,
+        claim_binding=check_claim_binding,
+        tdx_binding=check_tdx_binding,
+    )
+    if attested_issues and has_attested_samples(bundle_dir):
         return {
             "verified": False,
-            "reason": "claim_mismatch",
-            "mismatches": mismatches,
+            "reason": "attested_eval_samples_failed",
+            "issues": attested_issues,
             "label": "eval:REJECT",
             "run_id": manifest.get("run_id"),
         }
+
+    claimed_benchmarks = sorted(key for key in claimed if key in BENCHMARKS)
+    claimed_benchmarks = [key for key in claimed_benchmarks if key not in attested_keys]
+
+    checkpoint_path: Path | None = bundle_dir / "checkpoint"
+    if not checkpoint_path.is_dir():
+        if claimed_benchmarks:
+            if checkpoint is None:
+                return {
+                    "verified": False,
+                    "reason": "checkpoint_required",
+                    "issues": [
+                        "proof-only bundle: reproduce the checkpoint from the recipe + dataset "
+                        "and pass it via --checkpoint"
+                    ],
+                    "label": "eval:REJECT",
+                    "run_id": manifest.get("run_id"),
+                }
+            checkpoint_path = checkpoint
+        else:
+            checkpoint_path = None
+
+    rerun: dict[str, float] = {}
+    if claimed_benchmarks:
+        with _no_student_endpoint_env():
+            rerun = run_harness(
+                str(checkpoint_path),
+                claimed_benchmarks,
+                Path("eval/results/_verify"),
+                limit=limit,
+            )
+        mismatches = check_claim(claimed, rerun, tolerance_pct)
+        if mismatches:
+            return {
+                "verified": False,
+                "reason": "claim_mismatch",
+                "mismatches": mismatches,
+                "label": "eval:REJECT",
+                "run_id": manifest.get("run_id"),
+            }
 
     if frontier:
         report = score(claimed, frontier)
@@ -356,6 +385,8 @@ def verify_submission(
     report["verified"] = True
     report["reason"] = None
     report["run_id"] = manifest.get("run_id")
+    report["attested_eval_benchmarks"] = sorted(attested_keys)
+    report["attested_gsm8k_regression"] = REGRESSION_BENCHMARK_KEY in attested_keys
     # Informational trust signals: claim_bound distinguishes an attestation that
     # cryptographically commits to this bundle from a legacy unbound one, and
     # checkpoint_hash_match records local-reproduction fidelity.
@@ -389,7 +420,12 @@ def main(argv: list[str] | None = None) -> int:
         "a missing file means no frontier exists yet -> eval:BASELINE)",
     )
     parser.add_argument("--attestation", type=Path, default=None, help="attestation json from eval.attestation")
-    parser.add_argument("--limit", type=int, default=20, help="examples per benchmark for the cheap re-run")
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=ATTESTED_VERIFY_LIMIT,
+        help="examples per benchmark for the cheap re-run",
+    )
     parser.add_argument("--tolerance-pct", type=float, default=2.0)
     parser.add_argument(
         "--checkpoint",
