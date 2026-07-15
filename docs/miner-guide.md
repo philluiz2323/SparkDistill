@@ -61,6 +61,29 @@ The full flow, end to end:
 `dataset:xs` threshold). No duplicate prompts, task IDs, or responses. Full commands and
 the pinned `trajectories_sha256` are in [`datasets/README.md`](../datasets/README.md).
 
+### Avoid registry dedupe before you publish
+
+SparkProof already supports cross-registry novelty when you pass the pinned
+accepted snapshot:
+
+```bash
+# download the current accepted registry snapshot (updated after every merge)
+huggingface-cli download gittensor-model-hub/sparkproof-mining accepted_registry_snapshot.jsonl
+
+sparkproof-publish-dataset \
+  --bundle <dir> \
+  --repo-id <you>/<repo> \
+  --registry-snapshot ./accepted_registry_snapshot.jsonl
+```
+
+`novelty_report.json` will then include registry duplicates, not just
+intra-bundle duplicates. Target `novel_verified_rows` ≥ 25 before publishing.
+The lightweight `accepted_task_ids.json` on the same HF repo is useful for
+pre-generation filtering so you do not burn GPU on tasks already accepted.
+
+SparkDistill sizes rewards from canonical-mix `rows_selected` (fair label), so
+miners should treat the snapshot as the source of truth for expected credit.
+
 **Before you generate on a CC VM:** sibling `SparkDistill/tritonbench/` must be present
 (gitignored — sync it beside SparkProof or set `SPARKPROOF_TRITONBENCH_PROBLEMS`). Without
 it, decontamination aborts. Set `HF_TOKEN` in `.env` before `--publish`.

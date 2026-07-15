@@ -112,6 +112,11 @@ with speedy00. Set `SPARKDISTILL_MINING_DEDUPE=none` only for local debugging.
 `rows_total`. A 159-row bundle that only adds 25 novel mix rows earns `dataset:xs`, not
 `dataset:xl`.
 
+**Miner-side dedupe prevention:** after each registry merge, CI publishes
+`accepted_registry_snapshot.jsonl` on the canonical mining HF repo. Miners pass it to
+SparkProof as `--registry-snapshot` so `novelty_report.json` counts registry duplicates
+before publish. See `scripts/export_registry_snapshot.sh`.
+
 After each eligible registry merge, CI refreshes [`canonical.json`](canonical.json) from
 the live HF `mix_manifest.json` (also triggered by `.github/workflows/update_canonical_pin.yml`).
 

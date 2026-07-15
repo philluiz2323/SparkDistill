@@ -144,6 +144,7 @@ def aggregate_mining_mix(
             "dedupe": mix_result.dedupe,
             "sft_path": sft_path,
             "manifest_path": manifest_path,
+            "registry_entries": registry_entries,
         }
     finally:
         if cleanup:
@@ -194,6 +195,25 @@ def aggregate_and_publish_mining_dataset(
             manifest_path=mix_report["manifest_path"],
             repo_id=repo_id,
         )
+        from eval.export_registry_snapshot import publish_registry_snapshot, write_registry_snapshot
+
+        snapshot_path = work_dir / "accepted_registry_snapshot.jsonl"
+        task_ids_path = work_dir / "accepted_task_ids.json"
+        snapshot_report = write_registry_snapshot(
+            mix_report["registry_entries"],
+            out_path=snapshot_path,
+            task_ids_path=task_ids_path,
+            sparkproof_root=sparkproof_root,
+            dedupe=dedupe,
+            download_proof=download_proof,
+        )
+        pub_report["registry_snapshot"] = publish_registry_snapshot(
+            snapshot_path,
+            repo_id=repo_id,
+            task_ids_path=task_ids_path,
+        )
+        pub_report["registry_snapshot"]["rows_total"] = snapshot_report["rows_total"]
+        pub_report["registry_snapshot"]["sha256"] = snapshot_report["sha256"]
         pub_report["component_count"] = len(registry_entries)
         pub_report["dedupe"] = mix_report.get("dedupe")
         pub_report["components"] = mix_report.get("components") or []
