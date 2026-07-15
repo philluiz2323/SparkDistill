@@ -5,6 +5,9 @@ on:
     branches: [main]
     paths:
       - datasets/registry.jsonl
+  # Safety net when registry merges bypass the dataset gate auto-pin step.
+  schedule:
+    - cron: "0 */6 * * *"
   workflow_dispatch:
 
 permissions:
