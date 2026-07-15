@@ -31,6 +31,11 @@ jobs:
           ref: ${{ github.event.pull_request.base.ref }}
           fetch-depth: 0
 
+      - name: Configure git identity for automated commits
+        run: |
+          git config --global user.name "gittensor-dataset-bot"
+          git config --global user.email "gittensor-dataset-bot@users.noreply.github.com"
+
       - name: Read untrusted submission without executing it
         env:
           BASE_REF: ${{ github.event.pull_request.base.ref }}
