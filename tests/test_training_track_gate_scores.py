@@ -6,9 +6,12 @@ from pathlib import Path
 from eval.training_track_gate import (
     EVAL_LABELS,
     find_attestation_path,
+    record_merged_ledger_entry,
     update_pr_eval_label,
     verify_remote_proof_bundle_scores,
 )
+
+_PR_BODY_WITH_BUNDLE = "Proof-bundle URL: https://huggingface.co/org/proof-repo"
 
 
 def test_find_attestation_path_matches_run_dir():
@@ -180,3 +183,84 @@ def test_gate_training_pr_threads_eval_label(monkeypatch):
     assert report["verified"] is True
     assert report["label"] == "training:valid"
     assert report["eval_label"] == "eval:XL"
+
+
+def test_record_merged_ledger_entry_no_op_without_proof_bundle():
+    assert record_merged_ledger_entry(pr_url="https://x/pull/1", pr_body="no bundle here", head_ref="HEAD", changed_paths=None) == []
+
+
+def test_record_merged_ledger_entry_appends_and_writes_result(tmp_path, monkeypatch):
+    import eval.training_track_gate as gate
+
+    report = {
+        "verified": True,
+        "label": "eval:BASELINE",
+        "best_benchmark": None,
+        "best_pct_delta": None,
+        "regressions": [],
+        "run_id": "run-1",
+    }
+    monkeypatch.setattr(gate, "_download_and_verify_bundle", lambda *a, **k: (report, {"passed": True}, None))
+
+    ledger_path = tmp_path / "ledger.jsonl"
+    issues = record_merged_ledger_entry(
+        pr_url="https://github.com/org/repo/pull/1",
+        pr_body=_PR_BODY_WITH_BUNDLE,
+        head_ref="HEAD",
+        changed_paths=None,
+        ledger_path=ledger_path,
+    )
+    assert issues == []
+
+    lines = ledger_path.read_text().splitlines()
+    assert len(lines) == 1
+    entry = json.loads(lines[0])
+    assert entry["run_id"] == "run-1"
+    assert entry["label"] == "eval:BASELINE"
+    assert entry["attested"] is True
+
+    run_dir = tmp_path / "run-1"
+    assert json.loads((run_dir / "result.json").read_text()) == report
+    assert json.loads((run_dir / "attestation.json").read_text()) == {"passed": True}
+
+
+def test_record_merged_ledger_entry_is_idempotent(tmp_path, monkeypatch):
+    import eval.training_track_gate as gate
+
+    report = {"verified": True, "label": "eval:BASELINE", "best_benchmark": None, "best_pct_delta": None, "regressions": [], "run_id": "run-1"}
+    monkeypatch.setattr(gate, "_download_and_verify_bundle", lambda *a, **k: (report, None, None))
+
+    ledger_path = tmp_path / "ledger.jsonl"
+    ledger_path.write_text(json.dumps({"run_id": "run-1", "label": "eval:BASELINE"}) + "\n")
+
+    issues = record_merged_ledger_entry(
+        pr_url="https://github.com/org/repo/pull/1",
+        pr_body=_PR_BODY_WITH_BUNDLE,
+        head_ref="HEAD",
+        changed_paths=None,
+        ledger_path=ledger_path,
+    )
+    assert issues == []
+    assert len(ledger_path.read_text().splitlines()) == 1  # no duplicate appended
+    assert not (tmp_path / "run-1").exists()  # never even reached the write step
+
+
+def test_record_merged_ledger_entry_never_overwrites_committed_attestation(tmp_path, monkeypatch):
+    import eval.training_track_gate as gate
+
+    report = {"verified": True, "label": "eval:BASELINE", "best_benchmark": None, "best_pct_delta": None, "regressions": [], "run_id": "run-1"}
+    monkeypatch.setattr(gate, "_download_and_verify_bundle", lambda *a, **k: (report, {"passed": True, "new": True}, None))
+
+    ledger_path = tmp_path / "ledger.jsonl"
+    run_dir = tmp_path / "run-1"
+    run_dir.mkdir()
+    (run_dir / "attestation.json").write_text('{"committed": true}')
+
+    record_merged_ledger_entry(
+        pr_url="https://github.com/org/repo/pull/1",
+        pr_body=_PR_BODY_WITH_BUNDLE,
+        head_ref="HEAD",
+        changed_paths=None,
+        ledger_path=ledger_path,
+    )
+    assert json.loads((run_dir / "attestation.json").read_text()) == {"committed": True}

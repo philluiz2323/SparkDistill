@@ -350,6 +350,55 @@ def find_attestation_path(changed_paths: list[str] | None) -> str | None:
     return None
 
 
+def _download_and_verify_bundle(
+    repo_id: str,
+    *,
+    head_ref: str,
+    changed_paths: list[str] | None,
+    hf_token: str | None = None,
+) -> tuple[dict | None, dict | None, str | None]:
+    """Download the cited proof bundle and run eval.verify against it.
+
+    Shared by verify_remote_proof_bundle_scores (PR-time gating) and
+    record_merged_ledger_entry (merge-time ledger write) — both need the same
+    attestation lookup, frontier resolution, and verify_submission call, just
+    consuming the result differently (issues+label vs. the full report).
+
+    Returns `(report, attestation, error)`: `error` is set (and the other two
+    None) only when the bundle couldn't be read at all (bad attestation JSON,
+    download failure, or files missing) — genuine verify_submission outcomes
+    (including REJECT) come back as a populated `report`, never as `error`.
+    """
+    from huggingface_hub import snapshot_download
+
+    from eval.frontiers import load_frontier_scores
+    from eval.verify import resolve_bundle_gpu_architecture, verify_submission
+
+    attestation = None
+    attestation_path = find_attestation_path(changed_paths)
+    if attestation_path is not None:
+        text = _git_show(head_ref, attestation_path)
+        if text:
+            try:
+                attestation = json.loads(text)
+            except json.JSONDecodeError:
+                return None, None, f"{attestation_path}: invalid JSON"
+
+    try:
+        bundle_dir = Path(snapshot_download(repo_id=repo_id, repo_type="model", token=hf_token))
+    except Exception as exc:
+        return None, None, f"failed to download proof bundle from {repo_id} for verification: {exc}"
+
+    if not (bundle_dir / "manifest.json").exists() or not (bundle_dir / "eval_scores.json").exists():
+        return None, None, None  # already flagged by verify_remote_proof_bundle
+
+    manifest = json.loads((bundle_dir / "manifest.json").read_text(encoding="utf-8"))
+    frontier = load_frontier_scores(resolve_bundle_gpu_architecture(manifest))
+
+    report = verify_submission(bundle_dir, frontier, attestation=attestation)
+    return report, attestation, None
+
+
 def verify_remote_proof_bundle_scores(
     repo_id: str,
     *,
@@ -380,33 +429,13 @@ def verify_remote_proof_bundle_scores(
     None when nothing could be computed (download failure, or the deferred
     "checkpoint_required" case above).
     """
-    from huggingface_hub import snapshot_download
-
-    from eval.frontiers import load_frontier_scores
-    from eval.verify import resolve_bundle_gpu_architecture, verify_submission
-
-    attestation = None
-    attestation_path = find_attestation_path(changed_paths)
-    if attestation_path is not None:
-        text = _git_show(head_ref, attestation_path)
-        if text:
-            try:
-                attestation = json.loads(text)
-            except json.JSONDecodeError:
-                return [f"{attestation_path}: invalid JSON"], None
-
-    try:
-        bundle_dir = Path(snapshot_download(repo_id=repo_id, repo_type="model", token=hf_token))
-    except Exception as exc:
-        return [f"failed to download proof bundle from {repo_id} for score verification: {exc}"], None
-
-    if not (bundle_dir / "manifest.json").exists() or not (bundle_dir / "eval_scores.json").exists():
-        return [], None  # already flagged by verify_remote_proof_bundle
-
-    manifest = json.loads((bundle_dir / "manifest.json").read_text(encoding="utf-8"))
-    frontier = load_frontier_scores(resolve_bundle_gpu_architecture(manifest))
-
-    report = verify_submission(bundle_dir, frontier, attestation=attestation)
+    report, _attestation, error = _download_and_verify_bundle(
+        repo_id, head_ref=head_ref, changed_paths=changed_paths, hf_token=hf_token
+    )
+    if error is not None:
+        return [error], None
+    if report is None:
+        return [], None
     if report.get("reason") == "checkpoint_required":
         return [], None
     if report.get("verified"):
@@ -415,6 +444,64 @@ def verify_remote_proof_bundle_scores(
     reason = report.get("reason") or "verification failed"
     issues = [f"eval.verify {reason}: {issue}" for issue in detail] if detail else [f"eval.verify: {reason}"]
     return issues, report.get("label")
+
+
+def record_merged_ledger_entry(
+    *,
+    pr_url: str,
+    pr_body: str | None,
+    head_ref: str,
+    changed_paths: list[str] | None,
+    hf_token: str | None = None,
+    ledger_path: Path = Path("runs/ledger.jsonl"),
+) -> list[str]:
+    """Append the merged training-track PR's result to runs/ledger.jsonl.
+
+    Meant to run once, after merge (head_ref should be the merged commit, so
+    attestation.json is read from its final on-disk location). Idempotent:
+    skips silently if run_id is already present in the ledger, so a re-run
+    (e.g. workflow retry) never double-appends. Non-training-track PRs (no
+    cited HF proof-bundle repo) are a silent no-op — nothing to log.
+    """
+    from eval.ledger import append_entry, build_entry
+
+    repo_id = parse_proof_bundle_hf_repo(pr_body)
+    if repo_id is None:
+        return []
+
+    report, attestation, error = _download_and_verify_bundle(
+        repo_id, head_ref=head_ref, changed_paths=changed_paths, hf_token=hf_token
+    )
+    if error is not None:
+        return [error]
+    if report is None:
+        return ["proof bundle missing manifest.json or eval_scores.json — nothing to log"]
+
+    run_id = report.get("run_id")
+    if not run_id:
+        return ["proof bundle manifest.json is missing run_id — nothing to log"]
+
+    existing_run_ids = set()
+    if ledger_path.exists():
+        for line in ledger_path.read_text(encoding="utf-8").splitlines():
+            if line.strip():
+                existing_run_ids.add(json.loads(line).get("run_id"))
+    if run_id in existing_run_ids:
+        return []
+
+    entry = build_entry(run_id, pr_url, f"https://huggingface.co/{repo_id}", report, attestation)
+    append_entry(ledger_path, entry)
+
+    run_dir = ledger_path.parent / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / "result.json").write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+    # attestation.json for a training-track PR is already committed by the miner as part
+    # of the PR itself (runs/<run_id>/attestation.json) — never rewrite that file here,
+    # only add it if this run somehow doesn't already have one on disk.
+    attestation_dest = run_dir / "attestation.json"
+    if attestation is not None and not attestation_dest.exists():
+        attestation_dest.write_text(json.dumps(attestation, indent=2) + "\n", encoding="utf-8")
+    return []
 
 
 def should_enforce_training_gate(
