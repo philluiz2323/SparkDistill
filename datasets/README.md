@@ -101,6 +101,10 @@ python -m eval.dataset_verify --hf-repo <user>/<repo> \
 | `dataset:none` | < 25 (proof may be valid, but not merged/rewarded) |
 | `dataset:REJECT` | attestation, release-gate, hash, or policy failure |
 
+**SN74 payout:** `fixed_base_score (1.0) × label_multiplier`. Training-track `eval:*`
+tiers pay **2×** the `dataset:*` multiplier at the same letter (e.g. `dataset:l` = 2.5,
+`eval:L` = 5.0). See [`.gittensor/weights.json`](../.gittensor/weights.json).
+
 Merged datasets feed the **single canonical mining dataset** used by every training-track
 PR. After each registry merge, CI refreshes [`canonical.json`](canonical.json) with the
 pinned `mix_manifest.sft_sha256` and row count.

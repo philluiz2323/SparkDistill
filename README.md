@@ -73,9 +73,10 @@ reasoning and **verified Triton code**, not just plausible text. SPARKDISTILL ow
 
 **Scoring is quality-only.** SN74 pays each merged PR for its verified marginal quality
 improvement over the current best ("frontier") checkpoint, labeled **XL / L / M / S / XS**
-by the deterministic eval loop, the same tiering shape `sparkinfer` uses for speedups.
-Tooling, bench, docs, and refactors are welcome but score 0 unless they produce a verified
-frontier improvement. See [`.gittensor/weights.json`](.gittensor/weights.json) and
+by the deterministic eval loop. **Training-track `eval:*` tiers pay 2× the `dataset:*`
+tier at the same letter** (frontier wins outweigh raw row contributions at the same size
+band). Tooling, bench, docs, and refactors are welcome but score 0 unless they produce a
+verified frontier improvement. See [`.gittensor/weights.json`](.gittensor/weights.json) and
 [`docs/miner-guide.md`](docs/miner-guide.md).
 
 ## How a PR gets merged & rewarded

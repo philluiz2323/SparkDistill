@@ -145,8 +145,12 @@ maintainer-owned — see *Maintainer-owned paths* below.)
 
 The eval loop labels each PR **XL / L / M / S / XS** from the measured delta (or
 **BASELINE** for the first verified checkpoint on a new student/phase) — never by hand —
-and that tier is the payout. A quality improvement is scored the same wherever it lands
-(`teacher/`, `recipes/`, `eval/`); there is **no per-subsystem budget**.
+and that tier is the payout. **Training-track `eval:*` multipliers are 2× the `dataset:*`
+tier at the same letter** (e.g. `eval:L` = 5.0 vs `dataset:l` = 2.5); see
+[`.gittensor/weights.json`](.gittensor/weights.json) and
+[`docs/miner-guide.md`](docs/miner-guide.md#sn74-payout-multipliers-gittensor). A quality
+improvement is scored the same wherever it lands (`teacher/`, `recipes/`, `eval/`); there
+is **no per-subsystem budget**.
 
 ## Maintainer-owned paths
 

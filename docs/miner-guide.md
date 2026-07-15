@@ -21,6 +21,28 @@ the training track once those rows are merged into the canonical pin. Every trai
 the same `sparkproof-mining` snapshot — fair comparison is by recipe quality, not private
 data.
 
+### SN74 payout multipliers (Gittensor)
+
+Live payout is `fixed_base_score (1.0) × label_multiplier × time_decay` from
+[`master_repositories.json`](https://github.com/entrius/gittensor/blob/test/gittensor/validator/weights/master_repositories.json)
+(`gittensor-model-hub/SparkDistill`). **Training-track `eval:*` tiers pay 2× the
+`dataset:*` tier at the same letter** — a verified frontier win is weighted higher than
+adding training rows at the same size band:
+
+| tier | `dataset:*` | `eval:*` |
+|---|---|---|
+| XL | 4.0 | **8.0** |
+| L | 2.5 | **5.0** |
+| M | 1.5 | **3.0** |
+| S | 1.0 | **2.0** |
+| XS | 0.5 | **1.0** |
+| BASELINE | — | **2.0** |
+
+`eval:BASELINE` (first verified checkpoint on a new student/phase) pays **2.0**.
+`eval:none`, `dataset:none`, and `*:REJECT` pay **0**.
+
+Reference copy: [`.gittensor/weights.json`](../.gittensor/weights.json).
+
 ## Dataset Track (`dataset:xs/s/m/l/xl`)
 
 The full flow, end to end:

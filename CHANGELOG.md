@@ -5,6 +5,14 @@ All notable changes to SparkDistill are documented here. The format follows
 
 ## [Unreleased]
 
+### Changed
+- **SN74 eval tier multipliers (2× dataset at same letter):** live Gittensor payout for
+  training-track `eval:XL/L/M/S/XS` is now **2×** the `dataset:xl/l/m/s/xs` multiplier at
+  the same tier (e.g. `eval:L` = 5.0 vs `dataset:l` = 2.5); `eval:BASELINE` = **2.0**.
+  Documented in `.gittensor/weights.json`, `docs/miner-guide.md`, and
+  `datasets/README.md`. Config lands via
+  [gittensor PR #1635](https://github.com/entrius/gittensor/pull/1635).
+
 ### Added
 - **Training-track canonical pin grace window** ([#121], fixes [#118]): training PRs
   no longer fail when dataset-track merges advance `datasets/canonical.json` while a
