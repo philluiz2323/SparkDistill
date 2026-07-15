@@ -72,11 +72,12 @@ _LABEL_COLORS = {
 }
 
 # eval:* is the reward-tier label eval.verify computes (separate from training:* above,
-# which only gates format/provenance) — applied only when verify_remote_proof_bundle_scores
-# could actually compute one (i.e. the bundle's claims were CPU-verifiable; see its docstring).
+# which only gates format/provenance) — applied when verify_remote_proof_bundle_scores
+# can compute one from CPU-verifiable claims or deferred checkpoint tiering.
 EVAL_LABELS = frozenset(
     {"eval:XL", "eval:L", "eval:M", "eval:S", "eval:XS", "eval:none", "eval:BASELINE", "eval:REJECT"}
 )
+_AUTO_CLOSE_EVAL_LABELS = frozenset({"eval:none", "eval:REJECT"})
 _EVAL_LABEL_COLORS = {
     "eval:XL": "1d76db",
     "eval:L": "0e8a16",
@@ -350,13 +351,34 @@ def find_attestation_path(changed_paths: list[str] | None) -> str | None:
     return None
 
 
+def score_claimed_eval_label(bundle_dir: Path, manifest: dict) -> str | None:
+    """Tier claimed scores when full verify is deferred (checkpoint_required)."""
+    from eval.frontiers import load_frontier_scores
+    from eval.score import score
+    from eval.verify import resolve_bundle_gpu_architecture
+
+    eval_path = bundle_dir / "eval_scores.json"
+    if not eval_path.exists():
+        return None
+    payload = json.loads(eval_path.read_text(encoding="utf-8"))
+    scores = payload.get("scores") if isinstance(payload.get("scores"), dict) else payload
+    if not isinstance(scores, dict):
+        return None
+    arch = resolve_bundle_gpu_architecture(manifest)
+    frontier = load_frontier_scores(arch)
+    if frontier is None:
+        return "eval:BASELINE"
+    report = score(scores, frontier, gpu_architecture=arch)
+    return report["label"]
+
+
 def _download_and_verify_bundle(
     repo_id: str,
     *,
     head_ref: str,
     changed_paths: list[str] | None,
     hf_token: str | None = None,
-) -> tuple[dict | None, dict | None, str | None]:
+) -> tuple[dict | None, dict | None, str | None, Path | None]:
     """Download the cited proof bundle and run eval.verify against it.
 
     Shared by verify_remote_proof_bundle_scores (PR-time gating) and
@@ -364,8 +386,8 @@ def _download_and_verify_bundle(
     attestation lookup, frontier resolution, and verify_submission call, just
     consuming the result differently (issues+label vs. the full report).
 
-    Returns `(report, attestation, error)`: `error` is set (and the other two
-    None) only when the bundle couldn't be read at all (bad attestation JSON,
+    Returns `(report, attestation, error, bundle_dir)`: `error` is set (and the other
+    fields None) only when the bundle couldn't be read at all (bad attestation JSON,
     download failure, or files missing) — genuine verify_submission outcomes
     (including REJECT) come back as a populated `report`, never as `error`.
     """
@@ -382,21 +404,21 @@ def _download_and_verify_bundle(
             try:
                 attestation = json.loads(text)
             except json.JSONDecodeError:
-                return None, None, f"{attestation_path}: invalid JSON"
+                return None, None, f"{attestation_path}: invalid JSON", None
 
     try:
         bundle_dir = Path(snapshot_download(repo_id=repo_id, repo_type="model", token=hf_token))
     except Exception as exc:
-        return None, None, f"failed to download proof bundle from {repo_id} for verification: {exc}"
+        return None, None, f"failed to download proof bundle from {repo_id} for verification: {exc}", None
 
     if not (bundle_dir / "manifest.json").exists() or not (bundle_dir / "eval_scores.json").exists():
-        return None, None, None  # already flagged by verify_remote_proof_bundle
+        return None, None, None, bundle_dir  # already flagged by verify_remote_proof_bundle
 
     manifest = json.loads((bundle_dir / "manifest.json").read_text(encoding="utf-8"))
     frontier = load_frontier_scores(resolve_bundle_gpu_architecture(manifest))
 
     report = verify_submission(bundle_dir, frontier, attestation=attestation)
-    return report, attestation, None
+    return report, attestation, None, bundle_dir
 
 
 def verify_remote_proof_bundle_scores(
@@ -426,10 +448,11 @@ def verify_remote_proof_bundle_scores(
 
     Returns `(issues, eval_label)` — `eval_label` is the reward-tier label
     eval.verify computed (e.g. "eval:BASELINE", "eval:XL", "eval:REJECT"), or
-    None when nothing could be computed (download failure, or the deferred
-    "checkpoint_required" case above).
+    a tier derived from claimed scores when verify is deferred
+    ("checkpoint_required"), or None when nothing could be computed (download
+    failure).
     """
-    report, _attestation, error = _download_and_verify_bundle(
+    report, _attestation, error, bundle_dir = _download_and_verify_bundle(
         repo_id, head_ref=head_ref, changed_paths=changed_paths, hf_token=hf_token
     )
     if error is not None:
@@ -437,6 +460,9 @@ def verify_remote_proof_bundle_scores(
     if report is None:
         return [], None
     if report.get("reason") == "checkpoint_required":
+        if bundle_dir is not None:
+            manifest = json.loads((bundle_dir / "manifest.json").read_text(encoding="utf-8"))
+            return [], score_claimed_eval_label(bundle_dir, manifest)
         return [], None
     if report.get("verified"):
         return [], report.get("label")
@@ -469,7 +495,7 @@ def record_merged_ledger_entry(
     if repo_id is None:
         return []
 
-    report, attestation, error = _download_and_verify_bundle(
+    report, attestation, error, _bundle_dir = _download_and_verify_bundle(
         repo_id, head_ref=head_ref, changed_paths=changed_paths, hf_token=hf_token
     )
     if error is not None:
@@ -646,10 +672,47 @@ def update_pr_eval_label(pr_number: int, label: str) -> list[str]:
     return []
 
 
-def close_training_pr(pr_number: int, issues: list[str]) -> list[str]:
-    body = "\n".join(f"- {issue}" for issue in issues) or "- training-track gate rejected this PR"
+def close_training_pr(
+    pr_number: int,
+    *,
+    training_label: str = "training:REJECT",
+    eval_label: str | None = None,
+    issues: list[str] | None = None,
+) -> list[str]:
+    """Close a training-track PR that is not merge-eligible."""
+    if eval_label == "eval:none":
+        summary = (
+            "Closed automatically: claimed proof scores are below the merge threshold "
+            "(eval:none)."
+        )
+        result = subprocess.run(
+            ["gh", "pr", "close", str(pr_number), "--comment", summary],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return [f"could not close PR #{pr_number}: {(result.stderr or result.stdout).strip()}"]
+        return []
+
+    if eval_label == "eval:REJECT":
+        summary = "Closed automatically: eval verification rejected this submission."
+        if issues:
+            bullets = "\n".join(f"- {issue}" for issue in issues[:8])
+            summary = f"{summary}\n\n{bullets}"
+        result = subprocess.run(
+            ["gh", "pr", "close", str(pr_number), "--comment", summary],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            return [f"could not close PR #{pr_number}: {(result.stderr or result.stdout).strip()}"]
+        return []
+
+    body = "\n".join(f"- {issue}" for issue in (issues or [])) or "- training-track gate rejected this PR"
     comment = subprocess.run(
-        ["gh", "pr", "comment", str(pr_number), "--body", f"## training:REJECT\n\n{body}"],
+        ["gh", "pr", "comment", str(pr_number), "--body", f"## {training_label}\n\n{body}"],
         capture_output=True,
         text=True,
         check=False,
@@ -735,14 +798,37 @@ def main(argv: list[str] | None = None) -> int:
 
     if (
         args.close_on_reject
-        and report.get("label") == "training:REJECT"
         and args.pr_number is not None
+        and report.get("label") == "training:REJECT"
     ):
-        close_issues = close_training_pr(args.pr_number, list(report.get("issues") or []))
+        close_issues = close_training_pr(
+            args.pr_number,
+            training_label="training:REJECT",
+            issues=list(report.get("issues") or []),
+        )
         if close_issues:
             for issue in close_issues:
                 print(f"  - {issue}", file=sys.stderr)
             return 1
+        print(f"closed PR #{args.pr_number}", file=sys.stderr)
+
+    eval_label = report.get("eval_label")
+    if (
+        args.close_on_reject
+        and args.pr_number is not None
+        and report.get("label") == "training:valid"
+        and eval_label in _AUTO_CLOSE_EVAL_LABELS
+    ):
+        close_issues = close_training_pr(
+            args.pr_number,
+            eval_label=eval_label,
+            issues=list(report.get("issues") or []),
+        )
+        if close_issues:
+            for issue in close_issues:
+                print(f"  - {issue}", file=sys.stderr)
+            return 1
+        print(f"closed PR #{args.pr_number}", file=sys.stderr)
 
     return 0 if report.get("verified") else 1
 

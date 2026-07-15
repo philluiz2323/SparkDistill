@@ -14,7 +14,7 @@ def test_main_writes_ledger_entry(tmp_path, monkeypatch):
         "regressions": [],
         "run_id": "run-1",
     }
-    monkeypatch.setattr(gate, "_download_and_verify_bundle", lambda *a, **k: (report, None, None))
+    monkeypatch.setattr(gate, "_download_and_verify_bundle", lambda *a, **k: (report, None, None, None))
 
     pr_body_file = tmp_path / "pr_body.md"
     pr_body_file.write_text("Proof-bundle URL: https://huggingface.co/org/proof-repo")
@@ -38,7 +38,7 @@ def test_main_writes_ledger_entry(tmp_path, monkeypatch):
 def test_main_returns_nonzero_on_issue(tmp_path, monkeypatch):
     import eval.training_track_gate as gate
 
-    monkeypatch.setattr(gate, "_download_and_verify_bundle", lambda *a, **k: (None, None, "download failed"))
+    monkeypatch.setattr(gate, "_download_and_verify_bundle", lambda *a, **k: (None, None, "download failed", None))
 
     pr_body_file = tmp_path / "pr_body.md"
     pr_body_file.write_text("Proof-bundle URL: https://huggingface.co/org/proof-repo")

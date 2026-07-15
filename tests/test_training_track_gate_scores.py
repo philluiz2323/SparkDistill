@@ -5,8 +5,10 @@ from pathlib import Path
 
 from eval.training_track_gate import (
     EVAL_LABELS,
+    close_training_pr,
     find_attestation_path,
     record_merged_ledger_entry,
+    score_claimed_eval_label,
     update_pr_eval_label,
     verify_remote_proof_bundle_scores,
 )
@@ -31,13 +33,13 @@ def _fake_snapshot(bundle_dir: Path):
     return fake_snapshot_download
 
 
-def test_verify_remote_proof_bundle_scores_skips_checkpoint_required(tmp_path, monkeypatch):
+def test_verify_remote_proof_bundle_scores_tiers_claims_on_checkpoint_required(tmp_path, monkeypatch):
     from eval.canonical_dataset import canonical_hf_url
 
     bundle = tmp_path / "bundle"
     bundle.mkdir()
     (bundle / "manifest.json").write_text(json.dumps({"run_id": "r1", "dataset_url": canonical_hf_url()}))
-    (bundle / "eval_scores.json").write_text(json.dumps({"scores": {"triton": 0.4}}))
+    (bundle / "eval_scores.json").write_text(json.dumps({"scores": {"triton": 0.421}}))
 
     monkeypatch.setattr("huggingface_hub.snapshot_download", _fake_snapshot(bundle))
 
@@ -46,10 +48,9 @@ def test_verify_remote_proof_bundle_scores_skips_checkpoint_required(tmp_path, m
         head_ref="HEAD",
         changed_paths=None,
     )
-    # No attested samples and no checkpoint -> verify_submission's "checkpoint_required"
-    # is deferred to off-CI validator verification, not a CI-gatable failure.
+    # proof-only bundles defer checkpoint re-run; tier claimed scores for gating.
     assert issues == []
-    assert eval_label is None
+    assert eval_label == "eval:none"
 
 
 def test_verify_remote_proof_bundle_scores_surfaces_attested_mismatch(tmp_path, monkeypatch):
@@ -200,7 +201,7 @@ def test_record_merged_ledger_entry_appends_and_writes_result(tmp_path, monkeypa
         "regressions": [],
         "run_id": "run-1",
     }
-    monkeypatch.setattr(gate, "_download_and_verify_bundle", lambda *a, **k: (report, {"passed": True}, None))
+    monkeypatch.setattr(gate, "_download_and_verify_bundle", lambda *a, **k: (report, {"passed": True}, None, None))
 
     ledger_path = tmp_path / "ledger.jsonl"
     issues = record_merged_ledger_entry(
@@ -228,7 +229,7 @@ def test_record_merged_ledger_entry_is_idempotent(tmp_path, monkeypatch):
     import eval.training_track_gate as gate
 
     report = {"verified": True, "label": "eval:BASELINE", "best_benchmark": None, "best_pct_delta": None, "regressions": [], "run_id": "run-1"}
-    monkeypatch.setattr(gate, "_download_and_verify_bundle", lambda *a, **k: (report, None, None))
+    monkeypatch.setattr(gate, "_download_and_verify_bundle", lambda *a, **k: (report, None, None, None))
 
     ledger_path = tmp_path / "ledger.jsonl"
     ledger_path.write_text(json.dumps({"run_id": "run-1", "label": "eval:BASELINE"}) + "\n")
@@ -249,7 +250,7 @@ def test_record_merged_ledger_entry_never_overwrites_committed_attestation(tmp_p
     import eval.training_track_gate as gate
 
     report = {"verified": True, "label": "eval:BASELINE", "best_benchmark": None, "best_pct_delta": None, "regressions": [], "run_id": "run-1"}
-    monkeypatch.setattr(gate, "_download_and_verify_bundle", lambda *a, **k: (report, {"passed": True, "new": True}, None))
+    monkeypatch.setattr(gate, "_download_and_verify_bundle", lambda *a, **k: (report, {"passed": True, "new": True}, None, None))
 
     ledger_path = tmp_path / "ledger.jsonl"
     run_dir = tmp_path / "run-1"
@@ -264,3 +265,78 @@ def test_record_merged_ledger_entry_never_overwrites_committed_attestation(tmp_p
         ledger_path=ledger_path,
     )
     assert json.loads((run_dir / "attestation.json").read_text()) == {"committed": True}
+
+
+def test_score_claimed_eval_label_hopper_without_frontier(tmp_path):
+    bundle = tmp_path / "bundle"
+    bundle.mkdir()
+    (bundle / "manifest.json").write_text(json.dumps({"run_id": "r1", "train_gpu": "hopper"}))
+    (bundle / "eval_scores.json").write_text(json.dumps({"scores": {"triton": 0.5}}))
+
+    assert score_claimed_eval_label(bundle, json.loads((bundle / "manifest.json").read_text())) == "eval:BASELINE"
+
+
+def test_close_training_pr_eval_none(monkeypatch):
+    from types import SimpleNamespace
+
+    import eval.training_track_gate as gate
+
+    calls: list[list[str]] = []
+
+    def fake_run(command, **kwargs):
+        calls.append(command)
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(gate.subprocess, "run", fake_run)
+    assert close_training_pr(150, eval_label="eval:none") == []
+    assert calls == [
+        [
+            "gh",
+            "pr",
+            "close",
+            "150",
+            "--comment",
+            "Closed automatically: claimed proof scores are below the merge threshold (eval:none).",
+        ]
+    ]
+
+
+def test_main_auto_closes_training_valid_eval_none(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+
+    import eval.training_track_gate as gate
+
+    report = {
+        "verified": True,
+        "label": "training:valid",
+        "eval_label": "eval:none",
+        "issues": [],
+    }
+    monkeypatch.setattr(gate, "gate_training_pr", lambda **k: report)
+
+    out = tmp_path / "report.json"
+    close_calls: list[dict] = []
+
+    def fake_close(pr_number, **kwargs):
+        close_calls.append({"pr_number": pr_number, **kwargs})
+        return []
+
+    monkeypatch.setattr(gate, "close_training_pr", fake_close)
+    monkeypatch.setattr(
+        gate.subprocess,
+        "run",
+        lambda *a, **k: SimpleNamespace(returncode=0, stdout="", stderr=""),
+    )
+
+    rc = gate.main(
+        [
+            "--out",
+            str(out),
+            "--pr-number",
+            "150",
+            "--close-on-reject",
+        ]
+    )
+    assert rc == 0
+    assert close_calls == [{"pr_number": 150, "eval_label": "eval:none", "issues": []}]
+
